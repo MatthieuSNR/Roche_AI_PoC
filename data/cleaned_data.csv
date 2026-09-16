@@ -1,0 +1,11 @@
+Timestamp,Planner_ID,Material_ID,Comment,Stockout,Date,Time
+2026-09-01 08:30:00,Planner_1,MAT_100,"Retard du fournisseur XYZ pour le matériau MAT_100, livraison prévue le 05/09",True,2026-09-01,08:30:00
+2026-09-01 10:15:00,Planner_2,MAT_200,Problème de qualité détecté sur le lot 123 du matériau MAT_200,True,2026-09-01,10:15:00
+2026-09-01 14:45:00,Planner_1,MAT_100,Rupture de stock due à une erreur de commande,True,2026-09-01,14:45:00
+2026-09-02 09:00:00,Planner_3,MAT_300,Fournisseur ABC a confirmé un retard de 2 jours pour MAT_300,True,2026-09-02,09:00:00
+2026-09-02 11:20:00,Planner_2,MAT_200,"Stock suffisant pour MAT_200, pas de problème",False,2026-09-02,11:20:00
+2026-09-02 15:30:00,Planner_4,MAT_400,Retard logistique interne pour MAT_400,True,2026-09-02,15:30:00
+2026-09-03 10:00:00,Planner_1,MAT_100,Commande urgente passée pour MAT_100,False,2026-09-03,10:00:00
+2026-09-03 13:45:00,Planner_3,MAT_300,"Problème résolu pour MAT_300, livraison reçue",False,2026-09-03,13:45:00
+2026-09-04 08:20:00,Planner_2,MAT_200,Nouveau retard du fournisseur XYZ pour MAT_200,True,2026-09-04,08:20:00
+2026-09-04 16:10:00,Planner_5,MAT_500,Rupture de stock due à une demande imprévue pour MAT_500,True,2026-09-04,16:10:00
