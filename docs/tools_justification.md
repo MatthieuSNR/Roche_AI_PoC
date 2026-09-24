@@ -153,6 +153,31 @@ Each choice is grounded in **technical requirements, academic standards, and ind
 - [scikit-learn Official Documentation](https://scikit-learn.org/stable/documentation.html)
 - [JMLR: scikit-learn in Research](http://www.jmlr.org/)
 
+
+
+## 📌 Machine Learning: RandomForest (v1.4.2)
+
+### **Why RandomForest/XGBoost?**
+   **Criteria**          | **Justification**                                                                                     |
+ |-----------------------|---------------------------------------------------------------------------------------------------|
+ | **Supervised Learning** | We have **labeled data** (historical categories) to train the model.                          |
+ | **Handles Mixed Data** | Works well with **numerical features** (TF-IDF vectors) + **categorical features** (Supplier, Material_ID). |
+ | **Interpretability**   | RandomForest provides **feature importance**, helping identify key risk drivers (e.g., Supplier X delays). |
+ | **Performance**        | Achieves **80-90% accuracy** on classification tasks with structured + text data.              |
+ | **Industry Standard** | Widely used in **supply chain predictive analytics** (e.g., demand forecasting, risk prediction). |
+
+### **Key Features Used in the Project**
+- **`RandomForestClassifier`**: Predicts if the next category will be "Stock Out".
+- **`TfidfVectorizer`**: Converts comments (EN/DE) into numerical features.
+- **`LabelEncoder`**: Encodes categorical fields (Supplier, Material_ID, Category).
+
+### **Alternatives Considered**
+ | **Alternative**       | **Rejection Reason**                                                                                     |
+ |-----------------------|-------------------------------------------------------------------------------------------------------|
+ | Neural Networks       | Overkill for this task; requires more data and computational resources.              |
+ | Logistic Regression   | Less accurate for **non-linear relationships** (e.g., temporal patterns).             |
+ | SVM                   | Slower for **large datasets** (1.1M rows).                                                           |
+
 ---
 
 ---

@@ -1,76 +1,59 @@
 import streamlit as st
 import pandas as pd
-import matplotlib.pyplot as plt
-from wordcloud import WordCloud
-import os
+import numpy as np
+import joblib
 
-# Set page config
-st.set_page_config(page_title="Roche AI PoC - Root Cause Analysis", layout="wide")
+# Charger le modèle
+model = joblib.load("outputs/predictions/risk_prediction_model.pkl")
+vectorizer = joblib.load("outputs/predictions/tfidf_vectorizer.pkl")
+label_encoders = joblib.load("outputs/predictions/label_encoders.pkl")
 
-# Title
-st.title("🔍 Roche AI PoC: Root Cause Analysis Dashboard")
-st.markdown("""
-This dashboard demonstrates the **automatic extraction of root causes** from planner comments in Roche's ION Material Availability tool.
-""")
-
-# Get the absolute path to the project directory
-project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-data_path = os.path.join(project_dir, "outputs", "root_cause_results.csv")
-
-
-# Load data with caching
-@st.cache_data
-def load_data():
-    df = pd.read_csv(data_path)
-    return df
-
-
-df = load_data()
-
-# Display raw data
-st.header("📊 Raw Data")
-st.dataframe(df)
-
-# Filter by root cause
-st.header("🔍 Filter by Root Cause")
-selected_cause = st.selectbox(
-    "Select a root cause:", ["All"] + list(df["Root_Cause"].unique())
+# Interface utilisateur
+st.title("🔍 Roche AI PoC: Stock Out Risk Prediction")
+st.markdown(
+    "Predict the risk of **Stock Out** for a material based on historical patterns."
 )
-if selected_cause != "All":
-    df_filtered = df[df["Root_Cause"] == selected_cause]
-else:
-    df_filtered = df
 
-
-# Filter by material
-st.header("🔍 Filter by Material")
-selected_material = st.selectbox(
-    "Select a material:", ["All"] + list(df["Material_ID"].unique())
+# Saisie des données
+material_id = st.selectbox("Material ID:", ["MAT_100", "MAT_200", "MAT_300"])
+supplier = st.selectbox("Supplier:", ["Supplier_X", "Supplier_Y", "Supplier_Z"])
+category = st.selectbox(
+    "Current Category:", ["Good Part", "Below Safety", "Potential Stock Out"]
 )
-if selected_material != "All":
-    df_filtered = df_filtered[df_filtered["Material_ID"] == selected_material]
+comment = st.text_area("Planner Comment (EN/DE):", "Enter comment here...")
 
-st.dataframe(df_filtered)
+if st.button("Predict Risk"):
+    # Prétraitement
+    new_data = pd.DataFrame(
+        {
+            "Material_ID": [material_id],
+            "Supplier": [supplier],
+            "Category": [category],
+            "Comment": [comment],
+        }
+    )
 
+    # Vectoriser le commentaire
+    comment_vector = vectorizer.transform([comment.lower()])
 
-# Visualizations
-st.header("📈 Visualizations")
+    # Encoder les catégories
+    supplier_encoded = label_encoders["Supplier"].transform([supplier])[0]
+    material_encoded = label_encoders["Material"].transform([material_id])[0]
+    category_encoded = label_encoders["Category"].transform([category])[0]
 
-# Histogram
-st.subheader("Root Cause Distribution")
-root_cause_counts = df_filtered["Root_Cause"].value_counts()
-fig, ax = plt.subplots()
-root_cause_counts.plot(kind="bar", ax=ax, color="skyblue")
-ax.set_title("Root Cause Distribution")
-ax.set_xlabel("Root Cause")
-ax.set_ylabel("Number of Comments")
-st.pyplot(fig)
+    # Construire les features
+    X_new = np.hstack(
+        [
+            np.array([[supplier_encoded, material_encoded, category_encoded]]),
+            comment_vector.toarray(),
+        ]
+    )
 
-# Word cloud
-st.subheader("Word Cloud of Comments")
-text = " ".join(comment for comment in df_filtered["Comment"])
-wordcloud = WordCloud(width=800, height=400, background_color="white").generate(text)
-fig, ax = plt.subplots()
-ax.imshow(wordcloud, interpolation="bilinear")
-ax.axis("off")
-st.pyplot(fig)
+    # Prédiction
+    prediction = model.predict(X_new)[0]
+    probability = model.predict_proba(X_new)[0][1]  # Probabilité de "Stock Out"
+
+    # Afficher les résultats
+    st.subheader("📊 Prediction Results")
+    st.metric("Predicted Risk", "Stock Out Next Week" if prediction else "No Stock Out")
+    st.metric("Probability", f"{probability * 100:.1f}%")
