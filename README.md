@@ -16,12 +16,14 @@ This project aims to develop an **AI Proof of Concept (PoC)** to extract actiona
 
 ## 📁 Project Structure
 
+```
 Roche_AI_PoC/
 ├── data/               # Input data (synthetic and real)
 ├── scripts/            # Python scripts
 ├── outputs/            # Results (visualizations, models)
 ├── docs/               # Documentation
 └── requirements.txt    # Dependencies
+```
 
 ## 🚀 How to Run
 1. Install dependencies:
@@ -31,9 +33,11 @@ Roche_AI_PoC/
    python -m spacy download en_core_web_sm
 
 2. Test with synthetic data:
+    ```bash
     python scripts/nlp_pipeline.py
 
 3. Launch the Streamlit dashboard:
+    ```bash
     streamlit run scripts/app.py
 
 📊 Synthetic Data
