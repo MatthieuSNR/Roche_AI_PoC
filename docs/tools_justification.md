@@ -157,7 +157,7 @@ Each choice is grounded in **technical requirements, academic standards, and ind
 
 ## 📌 Machine Learning: RandomForest (v1.4.2)
 
-### **Why RandomForest/XGBoost?**
+### **Why RandomForest?**
    **Criteria**          | **Justification**                                                                                     |
  |-----------------------|---------------------------------------------------------------------------------------------------|
  | **Supervised Learning** | We have **labeled data** (historical categories) to train the model.                          |
@@ -178,11 +178,37 @@ Each choice is grounded in **technical requirements, academic standards, and ind
  | Logistic Regression   | Less accurate for **non-linear relationships** (e.g., temporal patterns).             |
  | SVM                   | Slower for **large datasets** (1.1M rows).                                                           |
 
+
 ---
+---
+
+
+## **📌 6. Model Serialization: joblib (v1.6.0)**
+
+### **Why joblib?**
+   **Criteria**          | **Justification**                                                                                     |
+ |-----------------------|---------------------------------------------------------------------------------------------------|
+ | **Efficiency**        | Faster than `pickle` for **large numpy arrays** (e.g., TF-IDF matrices, RandomForest models).     |
+ | **Compatibility**     | Works seamlessly with **scikit-learn** models (e.g., `RandomForestClassifier`, `TfidfVectorizer`). |
+ | **Industry Standard** | Widely used in **data science** for model persistence (e.g., saving/loading trained models).     |
+ | **Lightweight**       | Minimal overhead; **no additional dependencies**.                                                 |
+
+### **Key Features Used in the Project**
+- **`joblib.dump()`**: Save trained models (e.g., `risk_prediction_model.pkl`).
+- **`joblib.load()`**: Load models for predictions (e.g., in `app.py`).
+
+### **Alternatives Considered**
+ | **Alternative** | **Rejection Reason**                                                                                     |
+ |-----------------|-------------------------------------------------------------------------------------------------------|
+ | `pickle`        | Slower for **large models** (e.g., RandomForest with 100 trees).                                      |
+ | `dill`          | Overkill for this use case; **not necessary** for scikit-learn models.                              |
+
 
 ---
 
-## **📌 6. Visualization: matplotlib (v3.8.4) + seaborn (v0.13.2)**
+---
+
+## **📌 7. Visualization: matplotlib (v3.8.4) + seaborn (v0.13.2)**
 
 ### **Why matplotlib + seaborn?**
  | **Tool**       | **Justification**                                                                                                                                                                                                 |
@@ -209,7 +235,7 @@ Each choice is grounded in **technical requirements, academic standards, and ind
 
 ---
 
-## **📌 7. Dashboard: Streamlit (v1.32.0)**
+## **📌 8. Dashboard: Streamlit (v1.32.0)**
 
 ### **Why Streamlit?**
  | **Criteria**          | **Justification**                                                                                                                                                                                                 |
@@ -239,7 +265,7 @@ Each choice is grounded in **technical requirements, academic standards, and ind
 
 ---
 
-## **📌 8. Virtual Environment: `venv`**
+## **📌 9. Virtual Environment: `venv`**
 
 ### **Why a Virtual Environment?**
  | **Criteria**          | **Justification**                                                                                                                                                                                                 |
@@ -273,7 +299,7 @@ Each choice is grounded in **technical requirements, academic standards, and ind
 ---
 ---
 
-## **📌 9. Synthetic Data: `synthetic_data.csv`**
+## **📌 10. Synthetic Data: `synthetic_data.csv`**
 
 ### **Why Synthetic Data?**
    **Criteria**          | **Justification**                                                                                                                                                                                                 |
@@ -383,7 +409,7 @@ df.to_csv("data/synthetic_data.csv", index=False)
 ---
 ---
 
-## **📌 10. Project Structure: Why This Organization?**
+## **📌 11. Project Structure: Why This Organization?**
 
 ### **Why This Structure?**
 The project follows a **modular and scalable** structure inspired by **best practices in data science** (e.g., [Cookiecutter Data Science](https://drivendata.github.io/cookiecutter-data-science/)).
@@ -421,6 +447,5 @@ Each folder and file has a **clear purpose**, making the project **easy to maint
 - [Cookiecutter Data Science Project Template](https://drivendata.github.io/cookiecutter-data-science/)
 - [Good Enough Practices in Scientific Computing (arXiv)](https://arxiv.org/abs/1609.00037)
 - [Google’s Rules for Repository Structure](https://github.com/google/styleguide/blob/gh-pages/docguide/style.md#repository-structure)
-
 
 

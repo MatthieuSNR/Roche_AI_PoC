@@ -1,8 +1,32 @@
+import pandas as pd
+import numpy as np
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.preprocessing import LabelEncoder
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+import joblib
+
 # 1. Charger les données
-df = pd.read_csv("data/historical_data.csv")
+df = pd.read_csv("data/Snapshot_2026/Snapshot_2026_W14_Clean.csv")
 
 # 2. Trier par Material_ID et Timestamp
 df = df.sort_values(["Material_ID", "Timestamp"])
+
+
+# import glob
+
+# 1. Lister tous les fichiers CSV dans Snapshot_2026
+# csv_files = glob.glob("data/Snapshot_2026/*.csv")
+
+# 2. Charger et combiner tous les fichiers
+# dfs = []
+# for file in csv_files:
+#    dfs.append(pd.read_csv(file))
+# df = pd.concat(dfs, ignore_index=True)
+
+# 3. Trier par Material_ID et Timestamp
+# df = df.sort_values(["Material_ID", "Timestamp"])
+
 
 # 3. Créer la cible : 1 si la prochaine catégorie est "Stock Out"
 df["Next_Category"] = df.groupby("Material_ID")["Category"].shift(-1)
