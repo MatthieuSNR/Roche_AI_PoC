@@ -1,2 +1,7 @@
 # Roche historical data (do not push to GitHub)
 data/Snapshot_2026/
+data/cleaned_comments.csv
+venv/
+__pycache__/
+*.__pycache__
+.DS_Store
