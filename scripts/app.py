@@ -4,6 +4,13 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
 
+
+st.set_page_config(
+    page_title="Roche AI PoC - NLP Insights",
+    layout="wide", 
+)
+
+
 # Load cleaned data
 @st.cache_data
 def load_data():
@@ -15,9 +22,9 @@ df = load_data()
 
 # Material: description + number (e.g., "Syringe 10ml - 3000123456")
 df["MATERIAL_LABEL"] = (
-    df["MATERIAL_DESC"].fillna("No description"
+    df["MATERIAL_DESC"].fillna("No description")
     + " — "
-    + df["MATERIAL_NUMBER"].astype(str))
+    + df["MATERIAL_NUMBER"].astype("int64").astype(str)
 )
 
 # Vendor: name + account number (e.g., "B. Braun — 50012345")
@@ -33,17 +40,25 @@ st.title("🔍 Roche AI PoC: NLP Insights from Planner Comments")
 
 # Filters
 st.sidebar.header("Filters")
+
+
 # Vendor filter: user can search by name OR account number
 vendor_options = ["All"] + sorted(df["VENDOR_LABEL"].unique().tolist())
 selected_vendor_label = st.sidebar.selectbox("Select Vendor:", vendor_options)
 vendor_name_only = selected_vendor_label.split(" — ")[0] if selected_vendor_label != "All" else "All"
 
+
 # Material filter: user can search by number OR description
 material_options = ["All"] + sorted(df["MATERIAL_LABEL"].unique().tolist())
 selected_material_label = st.sidebar.selectbox("Select Material:", material_options)
 
+
 # Root cause filter: user can select from the unique root causes
 selected_root_cause = st.sidebar.selectbox("Select Root Cause:", ["All"] + df["Root_Cause"].unique().tolist())
+
+
+
+    
 
 # Filter data
 filtered_df = df.copy()
@@ -54,79 +69,202 @@ if selected_material_label != "All":
 if selected_root_cause != "All":
     filtered_df = filtered_df[filtered_df["Root_Cause"] == selected_root_cause]
 
-# Display filtered comments
-st.subheader("Filtered Comments")
-st.dataframe(
-    filtered_df[["Comment_EN", "Root_Cause", "VENDOR_NAME", "MATERIAL_LABEL"]]
-    .rename(columns={
-        "Comment_EN": "Comment (EN)",
-        "Root_Cause": "Root Cause",
-        "VENDOR_NAME": "Vendor Name",
-        "MATERIAL_LABEL": "Material"
-    }),
-    use_container_width=True
+
+# --- Tabs: organize the analysis into navigable sections ---
+tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    "💬 Filtered Comments",
+    "🔥 Top Root Causes",
+    "📊 Most Frequent Comments",
+    "🔎 Comments for a Root Cause",
+    "📈 Root Cause Trends Over Time"
+])
+
+
+
+# ================= TAB 1: Filtered Comments =================
+
+with tab1:
+    st.subheader("Filtered Comments")
+    st.dataframe(
+        filtered_df[["Comment_EN", "STOCKOUT_DATE", "MATERIAL_STATUS", "Root_Cause", "Impact", "VENDOR_NAME", "MATERIAL_LABEL"]]
+        .rename(columns={
+            "Comment_EN": "Comment (EN)",
+            "STOCKOUT_DATE": "Stockout Date",
+            "MATERIAL_STATUS": "Material Status",
+            "Root_Cause": "Root Cause",
+            "VENDOR_NAME": "Vendor Name",
+            "MATERIAL_LABEL": "Material"
+        }),
+        use_container_width=True,
+        height=500,
+    column_config={
+        "Comment (EN)": st.column_config.TextColumn(width="large"),
+    },
+        )
+
+
+# ================= TAB 2: Top Root Causes =================
+
+with tab2:
+    st.subheader("Top Root Causes")
+    
+    top_n_causes = st.radio(
+        "Show:", options=["Top 5", "Top 10", "Top 20"], horizontal=True,
+        key="radio_top_causes",
+    )
+    n_causes = int(top_n_causes.split(" ")[1])
+
+    # 2. Count root causes in the FILTERED data (respects the vendor filter)
+    root_cause_counts = filtered_df["Root_Cause"].value_counts().head(n_causes)
+
+    # 3. Build the color gradient: green (low) -> yellow -> orange -> red (high)
+    #    We use a custom colormap and scale each bar by its count relative to the max
+    colormap = mcolors.LinearSegmentedColormap.from_list(
+        "severity", ["#2ecc71", "#f1c40f", "#e67e22", "#e74c3c"]  # green, yellow, orange, red
+    )
+    max_count = root_cause_counts.max()
+    colors = [colormap(count / max_count) for count in root_cause_counts.values]
+
+    # 4. Plot (horizontal bars: easier to read long root cause names)
+    fig, ax = plt.subplots(figsize=(10, max(4, n_causes * 0.5)))
+    bars = ax.barh(root_cause_counts.index[::-1], root_cause_counts.values[::-1],
+                color=colors[::-1])
+    ax.set_title(f"Top {n_causes} Root Causes" + (f" — {vendor_name_only}" if vendor_name_only != "All" else " — All Vendors"))
+    ax.set_xlabel("Number of Comments")
+
+    # Add the count at the end of each bar
+    for bar, count in zip(bars, root_cause_counts.values[::-1]):
+        ax.text(bar.get_width() + max_count * 0.01, bar.get_y() + bar.get_height() / 2,
+                str(count), va="center")
+
+    st.pyplot(fig)
+
+    # 5. Show the percentage share 
+    total_comments = len(filtered_df)
+    if total_comments > 0:
+        # Split: top N causes as individual slices, rest grouped as "Other"
+        all_cause_counts = filtered_df["Root_Cause"].value_counts()
+        top_counts = all_cause_counts.head(n_causes)
+        other_count = all_cause_counts.iloc[n_causes:].sum()
+
+        pie_labels = top_counts.index.tolist()
+        pie_values = top_counts.values.tolist()
+        if other_count > 0:
+            pie_labels.append("Other")
+            pie_values.append(other_count)
+
+        fig_pie, ax_pie = plt.subplots(figsize=(8, 8))
+        ax_pie.pie(
+            pie_values,
+            labels=pie_labels,
+            autopct="%1.1f%%",       # Show percentage on each slice
+            startangle=90,
+            colors=plt.cm.Set3.colors[:len(pie_values)],  # Distinct colors
+        )
+        ax_pie.set_title(f"Root Cause Share — {vendor_name_only}")
+        st.pyplot(fig_pie)
+
+        # Keep the caption only for the "Other" context
+        st.caption(f"'Other' = all remaining root causes beyond the Top {n_causes} ({other_count} comments).")
+
+
+# ================= TAB 3: Most Frequent Comments =================
+
+with tab3:
+    st.subheader("Most Frequent Comments")
+    
+    top_n_comments = st.radio(
+        "Show:", options=["Top 5", "Top 10", "Top 20"], horizontal=True,
+        key="radio_top_comments",
+    )
+    n_comments = int(top_n_comments.split(" ")[1])
+
+    # Count identical comments in the filtered data
+    comment_counts = filtered_df["Comment_EN"].value_counts().head(n_comments)
+
+    # Display as a clean table
+    top_comments_df = comment_counts.reset_index()
+    top_comments_df.columns = ["Comment (EN)", "Occurrences"]
+    st.dataframe(top_comments_df, use_container_width=True)
+
+
+# ================= TAB 4: Comments for a Root Cause =================
+
+with tab4:
+    st.subheader("🔎 Comments for a Specific Root Cause")
+    # Show all root causes of the filtered data (not just top N)
+    causes_available = filtered_df["Root_Cause"].unique().tolist()
+    if causes_available:
+        selected_cause_for_details = st.selectbox(
+            "Select a root cause:", causes_available
+        )
+        details = filtered_df[filtered_df["Root_Cause"] == selected_cause_for_details]
+        st.dataframe(
+            details[["Comment_EN", "VENDOR_LABEL", "MATERIAL_LABEL"]].rename(
+                columns={
+                    "Comment_EN": "Comment (EN)",
+                    "VENDOR_LABEL": "Vendor",
+                    "MATERIAL_LABEL": "Material",
+                }
+            ).head(20),
+            use_container_width=True,
+        )
+    else:
+        st.info("No comments match the current filters.")
+        
+
+
+# ================= TAB 5: Root Cause Trends Over Time =================
+with tab5:
+    st.subheader("📈 Root Cause Trends Over Time")
+
+    # 1. Convert Snapshot_Date to datetime for proper sorting
+    filtered_df["Snapshot_Date"] = pd.to_datetime(
+        filtered_df["Snapshot_Date"], errors="coerce"
     )
 
+    # 2. Count comments per (snapshot date, root cause) — pandas does the math
+    trend_data = (
+        filtered_df
+        .dropna(subset=["Snapshot_Date", "Root_Cause"])
+        .groupby(["Snapshot_Date", "Root_Cause"])
+        .size()
+        .unstack(fill_value=0)
+        .sort_index()
+    )
 
-# --- Top N Root Causes chart ---
+    if trend_data.empty:
+        st.info("No data to display for the current filters.")
+    else:
+        # 3. Limit to the top 5 root causes of the filtered data (readable chart)
+        top_5_causes = filtered_df["Root_Cause"].value_counts().head(5).index
+        trend_top5 = trend_data[[c for c in top_5_causes if c in trend_data.columns]]
 
-st.subheader("🔥 Top Root Causes")
+        # 4. Plot: one line per root cause
+        fig, ax = plt.subplots(figsize=(12, 6))
+        for cause in trend_top5.columns:
+            ax.plot(
+                trend_top5.index,
+                trend_top5[cause],
+                marker="o",
+                label=cause,
+            )
+        ax.set_title(f"Root Cause Evolution — {vendor_name_only}")
+        ax.set_xlabel("Snapshot Date")
+        ax.set_ylabel("Number of Comments")
+        ax.legend(title="Root Cause", bbox_to_anchor=(1.02, 1), loc="upper left")
+        plt.xticks(rotation=45)
+        plt.tight_layout()
+        st.pyplot(fig)
 
-# 1. Let the user choose Top 5 or Top 10
-top_n = st.radio("Show:", options=["Top 5", "Top 10"], horizontal=True)
-n = int(top_n.split(" ")[1])  # Extract 5 or 10
-
-# 2. Count root causes in the FILTERED data (respects the vendor filter)
-root_cause_counts = filtered_df["Root_Cause"].value_counts().head(n)
-
-# 3. Build the color gradient: green (low) -> yellow -> orange -> red (high)
-#    We use a custom colormap and scale each bar by its count relative to the max
-colormap = mcolors.LinearSegmentedColormap.from_list(
-    "severity", ["#2ecc71", "#f1c40f", "#e67e22", "#e74c3c"]  # green, yellow, orange, red
-)
-max_count = root_cause_counts.max()
-colors = [colormap(count / max_count) for count in root_cause_counts.values]
-
-# 4. Plot (horizontal bars: easier to read long root cause names)
-fig, ax = plt.subplots(figsize=(10, max(4, n * 0.5)))
-bars = ax.barh(root_cause_counts.index[::-1], root_cause_counts.values[::-1],
-               color=colors[::-1])
-ax.set_title(f"Top {n} Root Causes" + (f" — {vendor_name_only}" if vendor_name_only != "All" else " — All Vendors"))
-ax.set_xlabel("Number of Comments")
-
-# Add the count at the end of each bar
-for bar, count in zip(bars, root_cause_counts.values[::-1]):
-    ax.text(bar.get_width() + max_count * 0.01, bar.get_y() + bar.get_height() / 2,
-            str(count), va="center")
-
-st.pyplot(fig)
-
-# 5. Show the percentage share (useful insight: "X% of this vendor's comments")
-total_comments = len(filtered_df)
-if total_comments > 0:
-    st.caption("Share of total comments:")
-    for cause, count in root_cause_counts.items():
-        st.caption(f"- **{cause}**: {count} comments ({count / total_comments * 100:.1f}%)")
-
-
-# --- Top N Recurring Comments ---
-st.subheader("💬 Most Frequent Comments")
-
-# Count identical comments in the filtered data
-comment_counts = filtered_df["Comment_EN"].value_counts().head(n)
-
-# Display as a clean table
-top_comments_df = comment_counts.reset_index()
-top_comments_df.columns = ["Comment (EN)", "Occurrences"]
-st.dataframe(top_comments_df, use_container_width=True)
-
-
-
-# --- Example comments for a selected root cause ---
-st.subheader("🔎 Comments for a Specific Root Cause")
-selected_cause_for_details = st.selectbox(
-    "Select a root cause to inspect:", root_cause_counts.index.tolist()
-)
-details = filtered_df[filtered_df["Root_Cause"] == selected_cause_for_details]
-st.dataframe(details[["Comment_EN", "VENDOR_NAME", "MATERIAL_NUMBER"]].head(10),
-             use_container_width=True)
+        # 5. Simple numeric insight (computed by pandas, not hallucinated!)
+        st.subheader("Key Numbers")
+        total_by_date = trend_data.sum(axis=1)
+        if len(total_by_date) >= 2:
+            first, last = total_by_date.iloc[0], total_by_date.iloc[-1]
+            change = last - first
+            st.metric(
+                "Total comments (first → last snapshot)",
+                f"{first} → {last}",
+                delta=f"{change:+d}",
+            )
