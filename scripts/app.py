@@ -34,9 +34,13 @@ df["VENDOR_LABEL"] = (
     + df["VENDOR_ACCOUNT_NUMBER"].astype(str)
 )
 
+# Convert Snapshot Date to datetime for proper sorting and filtering
+df["Snapshot_Date"] = pd.to_datetime(df["Snapshot_Date"], errors="coerce")
+
+
 
 # Title
-st.title("🔍 Roche AI PoC: NLP Insights from Planner Comments")
+st.title("Material availability dashboard: Insights from Planner Comments")
 
 # Filters
 st.sidebar.header("Filters")
@@ -57,7 +61,30 @@ selected_material_label = st.sidebar.selectbox("Select Material:", material_opti
 selected_root_cause = st.sidebar.selectbox("Select Root Cause:", ["All"] + df["Root_Cause"].unique().tolist())
 
 
+    
+    
+# --- Timeframe filter (Part A: record the user's choice only) ---
+st.sidebar.subheader("Timeframe")
+timeframe_option = st.sidebar.selectbox(
+    "Select period:",
+    ["All snapshots", "Last 4 weeks", "Last 8 weeks", "Last 16 weeks", "Custom period"],
+)
 
+# If "Custom period" is selected, show a date range picker
+start_ts, end_ts = None, None
+if timeframe_option == "Custom period":
+    min_date = df["Snapshot_Date"].min().date()
+    max_date = df["Snapshot_Date"].max().date()
+    date_range = st.sidebar.date_input(
+        "Date range:",
+        value=(min_date, max_date),
+        min_value=min_date,
+        max_value=max_date,
+    )
+    # date_input returns a tuple only when BOTH dates are selected
+    if isinstance(date_range, tuple) and len(date_range) == 2:
+        start_ts = pd.to_datetime(date_range[0])
+        end_ts = pd.to_datetime(date_range[1])
     
 
 # Filter data
@@ -69,6 +96,19 @@ if selected_material_label != "All":
 if selected_root_cause != "All":
     filtered_df = filtered_df[filtered_df["Root_Cause"] == selected_root_cause]
 
+# --- Timeframe filter (Part B: apply the choice to filtered_df) ---
+if timeframe_option == "Custom period":
+    if start_ts is not None:
+        filtered_df = filtered_df[
+            (filtered_df["Snapshot_Date"] >= start_ts)
+            & (filtered_df["Snapshot_Date"] <= end_ts)
+        ]
+elif timeframe_option.startswith("Last"):
+    weeks = int(timeframe_option.split(" ")[1])
+    latest_snapshot = df["Snapshot_Date"].max()
+    cutoff = latest_snapshot - pd.Timedelta(weeks=weeks)
+    filtered_df = filtered_df[filtered_df["Snapshot_Date"] >= cutoff]
+# "All snapshots" → no filtering needed
 
 # --- Tabs: organize the analysis into navigable sections ---
 tab1, tab2, tab3, tab4, tab5 = st.tabs([
@@ -86,20 +126,26 @@ tab1, tab2, tab3, tab4, tab5 = st.tabs([
 with tab1:
     st.subheader("Filtered Comments")
     st.dataframe(
-        filtered_df[["Comment_EN", "STOCKOUT_DATE", "MATERIAL_STATUS", "Root_Cause", "Impact", "VENDOR_NAME", "MATERIAL_LABEL"]]
+        filtered_df[["Comment_EN", "Snapshot_Date", "STOCKOUT_DATE", "MATERIAL_STATUS", "Root_Cause", "Impact", "VENDOR_NAME", "MATERIAL_LABEL"]]
         .rename(columns={
             "Comment_EN": "Comment (EN)",
+            "Snapshot_Date": "Snapshot Date",
             "STOCKOUT_DATE": "Stockout Date",
             "MATERIAL_STATUS": "Material Status",
             "Root_Cause": "Root Cause",
             "VENDOR_NAME": "Vendor Name",
             "MATERIAL_LABEL": "Material"
-        }),
+        })
+        
+        .assign(**{"Snapshot Date": lambda d: d["Snapshot Date"].dt.strftime("%Y-%m-%d"),
+                   "Stockout Date": lambda d: pd.to_datetime(d["Stockout Date"], errors="coerce").dt.strftime("%Y-%m-%d")}),
+        
         use_container_width=True,
         height=500,
     column_config={
         "Comment (EN)": st.column_config.TextColumn(width="large"),
     },
+    hide_index=True,
         )
 
 
@@ -219,9 +265,9 @@ with tab5:
     st.subheader("📈 Root Cause Trends Over Time")
 
     # 1. Convert Snapshot_Date to datetime for proper sorting
-    filtered_df["Snapshot_Date"] = pd.to_datetime(
-        filtered_df["Snapshot_Date"], errors="coerce"
-    )
+    #filtered_df["Snapshot_Date"] = pd.to_datetime(
+    #    filtered_df["Snapshot_Date"], errors="coerce"
+    #)
 
     # 2. Count comments per (snapshot date, root cause) — pandas does the math
     trend_data = (
