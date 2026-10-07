@@ -3,6 +3,9 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
+import os
+import sys
+
 
 
 st.set_page_config(
@@ -111,12 +114,13 @@ elif timeframe_option.startswith("Last"):
 # "All snapshots" → no filtering needed
 
 # --- Tabs: organize the analysis into navigable sections ---
-tab1, tab2, tab3, tab4, tab5 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
     "💬 Filtered Comments",
     "🔥 Top Root Causes",
     "📊 Most Frequent Comments",
     "🔎 Comments for a Root Cause",
-    "📈 Root Cause Trends Over Time"
+    "📈 Root Cause Trends Over Time",
+    "📋 Key Statistics"
 ])
 
 
@@ -314,3 +318,93 @@ with tab5:
                 f"{first} → {last}",
                 delta=f"{change:+d}",
             )
+            
+
+
+# Make scripts/ importable so we can reuse our stats module
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+from stats_engine import compute_stats
+
+# Compute all statistics ONCE (used by the Statistics tab and later the AI Summary)
+stats = compute_stats(filtered_df)
+
+
+# ================= TAB 6: Key Statistics =================
+with tab6:
+    st.subheader("📋 Key Statistics")
+
+    # Handle the empty case first (avoid crashes on very narrow filters)
+    if stats["total_comments"] == 0:
+        st.info("No comments match the current filters. Relax some filters to see statistics.")
+    else:
+        # --- Row 1: headline metrics (3 big numbers) ---
+        col1, col2, col3 = st.columns(3)
+
+        with col1:
+            st.metric("Total Comments", stats["total_comments"])
+
+        with col2:
+            if "vendor_count" in stats:
+                st.metric("Vendors Affected", stats["vendor_count"])
+
+        with col3:
+            if "trend_pct" in stats:
+                st.metric(
+                    "Comment Volume Trend",
+                    f"{stats['comments_first_snapshot']} → {stats['comments_last_snapshot']}",
+                    delta=f"{stats['trend_pct']:+.1f}%",
+                )
+
+        # --- Row 2: time window ---
+        if "first_snapshot" in stats:
+            st.caption(
+                f"Period: {stats['first_snapshot']} → {stats['last_snapshot']}"
+            )
+
+        # --- Root cause table with counts AND percentages ---
+        st.markdown("**Top 5 Root Causes**")
+        cause_df = pd.DataFrame({
+            "Root Cause": list(stats["top_root_causes"].keys()),
+            "Comments": list(stats["top_root_causes"].values()),
+            "Share %": list(stats["top_root_causes_pct"].values()),
+        })
+        st.dataframe(cause_df, use_container_width=True, hide_index=True)
+
+        # --- Rising vs falling causes (the most valuable insight!) ---
+        col_a, col_b = st.columns(2)
+        if "causes_increasing" in stats:
+            with col_a:
+                st.markdown("**📈 Increasing (first → last snapshot)**")
+                for cause, delta in stats["causes_increasing"].items():
+                    st.caption(f"- {cause}: **+{delta}**")
+        if "causes_decreasing" in stats:
+            with col_b:
+                st.markdown("**📉 Decreasing (first → last snapshot)**")
+                for cause, delta in stats["causes_decreasing"].items():
+                    st.caption(f"- {cause}: **{delta}**")
+
+        # --- Material status and impact ---
+        col_c, col_d = st.columns(2)
+        if "material_status_counts" in stats:
+            with col_c:
+                st.markdown("**Material Status**")
+                for status, count in stats["material_status_counts"].items():
+                    st.caption(f"- {status}: {count}")
+        if "impact_counts" in stats:
+            with col_d:
+                st.markdown("**Impact**")
+                for impact, count in stats["impact_counts"].items():
+                    st.caption(f"- {impact}: {count}")
+            
+            
+            
+            
+            
+import sys; sys.path.append("scripts")
+from stats_engine import compute_stats
+import pandas as pd
+
+df = pd.read_csv("data/cleaned_comments.csv")
+print(compute_stats(df))
+# puis sur un vendor :
+print(compute_stats(df[df["VENDOR_NAME"] == "NomDunVendor"]))
