@@ -1,20 +1,36 @@
-# Virtual environment
+# --- Secrets (never commit) ---
+.env
+*.env
+!.env.example
+
+# --- Roche data (confidential: never commit) ---
+data/raw/*
+data/interim/*
+data/processed/*
+data/Snapshot_2026/
+data/*.csv
+data/*.CSV
+data/*.parquet
+data/*.xlsx
+# Keep the folder skeleton
+!data/raw/.gitkeep
+!data/interim/.gitkeep
+!data/processed/.gitkeep
+
+# --- Generated outputs ---
+outputs/*
+!outputs/.gitkeep
+
+# --- Environments and caches ---
 venv/
-
-# Outputs
-outputs/
-
-# Python cache
+.venv/
 __pycache__/
 *.pyc
+*.egg-info/
+.pytest_cache/
+.ipynb_checkpoints/
 
-# macOS
+# --- OS / IDE ---
 .DS_Store
-
-# IDE
 .idea/
 .vscode/
-
-# CSV files
-data/Snapshot_2026
-data/cleaned_comments.CSV
