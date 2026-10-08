@@ -401,9 +401,10 @@ def ai_loading_screen(steps, total, sub, comments, step_ms=900, height=380):
     components.html(LOADING_HTML.replace("__DATA__", payload), height=height)
 
 
+def ai_result_html(text, meta):
+    return (f'<div class="ai-result">{html.escape(text).replace(chr(10), "<br>")}'
+            f'<div class="meta">{html.escape(meta)}</div></div>')
+
+
 def ai_result(text, meta):
-    st.markdown(
-        f'<div class="ai-result">{html.escape(text).replace(chr(10), "<br>")}'
-        f'<div class="meta">{html.escape(meta)}</div></div>',
-        unsafe_allow_html=True,
-    )
+    st.markdown(ai_result_html(text, meta), unsafe_allow_html=True)

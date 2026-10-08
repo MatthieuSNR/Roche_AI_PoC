@@ -10,7 +10,7 @@ import time
 
 # Make scripts/ importable so we can reuse our modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from llm_summary import generate_summary, is_server_available
+from llm_summary import stream_summary, tidy, is_server_available
 from stats_engine import compute_stats, root_cause_sources, weekly_active, NO_ROOT_CAUSE
 import ui
 
@@ -591,13 +591,17 @@ with tab7:
         if st.button("Generate summary", type="primary"):
             # The LLM runs in a background thread while the loading screen shows the analysis
             # steps. Every value shown on the screen is a real figure of the current selection.
-            result = {}
+            # The answer is streamed: it appears word by word as soon as the model writes.
+            result = {"parts": [], "done": False}
 
             def call_llm():
                 try:
-                    result["text"] = generate_summary(stats, stats["top_comments"])
+                    for piece in stream_summary(stats, stats["top_comments"]):
+                        result["parts"].append(piece)
                 except Exception as e:  # shown in the dashboard below
                     result["error"] = e
+                finally:
+                    result["done"] = True
 
             worker = threading.Thread(target=call_llm, daemon=True)
             worker.start()
@@ -631,15 +635,27 @@ with tab7:
                                      sub="Statistics computed by pandas · local LLM (LM Studio)",
                                      comments=sample, step_ms=step_ms)
             started = time.time()
-            while worker.is_alive() or time.time() - started < min_seconds:
+            # Loading screen until the model starts writing (and at least the animation length)
+            while (not result["parts"] and not result["done"]) or time.time() - started < min_seconds:
                 time.sleep(0.2)
             screen.empty()
 
+            # Then the text appears as it is written
+            live = st.empty()
+            meta = f"{selection_name} · writing with the local LLM…"
+            while not result["done"]:
+                live.markdown(ui.ai_result_html("".join(result["parts"]) + " ▌", meta), unsafe_allow_html=True)
+                time.sleep(0.15)
+            live.empty()
+
+            text = tidy("".join(result["parts"]))  # up to the last complete sentence
             if "error" in result:
                 st.error(f"LLM call failed: {result['error']}")
+            elif not text:
+                st.error("LLM call failed: empty answer.")
             else:
                 st.session_state["ai_summary"] = (
-                    filter_key, result["text"], selection_name, stats["total_comments"],
+                    filter_key, text, selection_name, stats["total_comments"],
                     time.strftime("%Y-%m-%d %H:%M"))
 
         saved = st.session_state.get("ai_summary")
