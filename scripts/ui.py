@@ -36,14 +36,24 @@ STATUS_DEFINITIONS = {
 }
 
 RADIUS = "2px"  # ION uses almost square corners
+BAR_HEIGHT = 54  # px, height of the blue top bar (fixed, full width)
 LOGO_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "roche_logo.png")
 
 CSS = f"""
 <style>
 .stApp {{ background-color: #F3F5F8; }}
-header[data-testid="stHeader"] {{ background: transparent; }}
-.block-container {{ padding-top: 1.2rem; }}
-section[data-testid="stSidebar"] {{ background-color: #FFFFFF; border-right: 1px solid #E1E5EB; }}
+[data-testid="stDecoration"] {{ display: none; }}
+/* Streamlit's own toolbar (Deploy, menu) sits on the right of the blue bar, in white */
+header[data-testid="stHeader"] {{ background: transparent; height: {BAR_HEIGHT}px; z-index: 1000002; }}
+header[data-testid="stHeader"] [data-testid="stToolbar"] {{ top: 50%; transform: translateY(-50%); right: 12px; }}
+header[data-testid="stHeader"] button, header[data-testid="stHeader"] [data-testid="stToolbar"] * {{ color: #fff !important; }}
+.block-container {{ padding-top: {BAR_HEIGHT + 4}px; }}
+/* Sidebar starts under the blue bar */
+section[data-testid="stSidebar"] {{
+  background-color: #FFFFFF; border-right: 1px solid #E1E5EB;
+  top: {BAR_HEIGHT}px !important; height: calc(100vh - {BAR_HEIGHT}px) !important;
+}}
+[data-testid="collapsedControl"], [data-testid="stSidebarCollapsedControl"] {{ top: {BAR_HEIGHT + 8}px !important; }}
 html, .main, [data-testid="stAppViewContainer"] {{ scroll-behavior: smooth; }}
 
 /* Square corners on the Streamlit widgets too */
@@ -54,11 +64,12 @@ html, .main, [data-testid="stAppViewContainer"] {{ scroll-behavior: smooth; }}
 }}
 
 .ion-topbar {{
-  background: {ION_BLUE}; color: #fff; border-radius: {RADIUS}; padding: 8px 18px; margin-bottom: 0;
-  display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,.15);
+  position: fixed; top: 0; left: 0; right: 0; height: {BAR_HEIGHT}px; z-index: 1000001;
+  background: {ION_BLUE}; color: #fff; padding: 0 200px 0 18px;
+  display: flex; align-items: center; gap: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.2);
 }}
 .ion-topbar .brand {{ display: flex; align-items: center; gap: 14px; font-size: 1.15rem; font-weight: 600; }}
-.ion-topbar .brand img {{ height: 30px; display: block; }}
+.ion-topbar .brand img {{ height: 32px; display: block; }}
 .ion-topbar .hex {{
   border: 2px solid #fff; padding: 1px 10px; font-weight: 700; font-size: .95rem;
   clip-path: polygon(12% 0, 88% 0, 100% 50%, 88% 100%, 12% 100%, 0 50%);
@@ -66,19 +77,22 @@ html, .main, [data-testid="stAppViewContainer"] {{ scroll-behavior: smooth; }}
 .ion-topbar .sub {{ font-size: .85rem; opacity: .9; }}
 .ion-topbar .tag {{ background: rgba(255,255,255,.18); border-radius: {RADIUS}; padding: 2px 8px; font-size: .8rem; }}
 
-/* Navigation menu: stays at the top of the page while scrolling */
-div[data-testid="stVerticalBlock"] > div:has(> div > div > .ion-nav),
-div[data-testid="stVerticalBlock"] > div:has(.ion-nav) {{ position: sticky; top: 0; z-index: 990; }}
+/* Navigation menu: stays just under the blue bar while scrolling */
+div[data-testid="stVerticalBlock"] > div:has(.ion-nav) {{ position: sticky; top: {BAR_HEIGHT}px; z-index: 990; }}
 .ion-nav {{
-  display: flex; flex-wrap: wrap; gap: 2px; background: #fff; border: 1px solid #D6DCE5; border-top: none;
+  display: flex; flex-wrap: wrap; gap: 2px; background: #fff; border: 1px solid #D6DCE5;
   padding: 4px; box-shadow: 0 2px 4px rgba(0,0,0,.06);
 }}
 .ion-nav a {{
   color: #1F2937 !important; text-decoration: none !important; font-size: .86rem; padding: 6px 12px;
   border-radius: {RADIUS}; white-space: nowrap;
 }}
-.ion-nav a:hover {{ background: {ION_BLUE}; color: #fff !important; }}
-.ion-anchor {{ scroll-margin-top: 120px; height: 0; }}
+.ion-nav a:hover {{ background: #E8F0FE; }}
+.ion-nav a.active {{ background: {ION_BLUE}; color: #fff !important; }}
+.emo {{ margin-right: 6px; }}
+.ion-anchor {{ scroll-margin-top: {BAR_HEIGHT + 70}px; height: 0; }}
+/* the invisible scroll-spy iframe takes no space */
+div[data-testid="element-container"]:has( iframe[height="0"]) {{ display: none; }}
 
 .ion-panel {{
   background: {ION_BLUE}; color: #fff; font-weight: 600; padding: 7px 14px; border-radius: {RADIUS};
@@ -134,8 +148,12 @@ def _logo_html():
 
 
 def _label(text):
-    """Escape a label and keep the space after its emoji (Streamlit's markdown drops it)."""
-    return html.escape(text).replace(" ", "&nbsp;", 1)
+    """Escape a label; a leading emoji gets its own span so it keeps a gap with the text
+    (Streamlit's markdown drops the space)."""
+    first, _, rest = text.partition(" ")
+    if rest and not first.isalnum():
+        return f'<span class="emo">{html.escape(first)}</span>{html.escape(rest)}'
+    return html.escape(text)
 
 
 def top_bar(title, subtitle, sections, tag="AI PoC"):
@@ -143,12 +161,63 @@ def top_bar(title, subtitle, sections, tag="AI PoC"):
     scrolls down to that section; the menu stays visible at the top of the page."""
     st.markdown(
         f'<div class="ion-topbar"><div class="brand">{_logo_html()}'
-        f'<span>{html.escape(title)}</span><span class="sub">{html.escape(subtitle)}</span></div>'
-        f'<span class="tag">{html.escape(tag)}</span></div>',
+        f'<span>{html.escape(title)}</span><span class="sub">{html.escape(subtitle)}</span>'
+        f'<span class="tag">{html.escape(tag)}</span></div></div>',
         unsafe_allow_html=True,
     )
-    links = "".join(f'<a href="#{a}" target="_self">{_label(label)}</a>' for a, label in sections)
+    links = "".join(f'<a href="#{a}" target="_self" data-target="{a}">{_label(label)}</a>' for a, label in sections)
     st.markdown(f'<div class="ion-nav">{links}</div>', unsafe_allow_html=True)
+
+
+SCROLL_SPY_JS = """
+<script>
+// Highlights in the menu the section currently on screen. The code is installed once in the
+// dashboard page itself (not in this iframe), so it survives Streamlit reruns.
+(function () {
+  const doc = window.parent.document;
+  if (doc.getElementById("ion-scroll-spy")) return;
+  const script = doc.createElement("script");
+  script.id = "ion-scroll-spy";
+  script.textContent = `
+    (function () {
+      const MIN_OFFSET = __OFFSET__;
+      let ticking = false, scroller = null;
+      function update() {
+        ticking = false;
+        const links = document.querySelectorAll(".ion-nav a[data-target]");
+        if (!links.length) return;
+        // a section is "current" once its title is in the upper third of the screen
+        const offset = Math.max(MIN_OFFSET, window.innerHeight * 0.35);
+        let current = links[0].dataset.target;
+        links.forEach(a => {
+          const el = document.getElementById(a.dataset.target);
+          if (el && el.getBoundingClientRect().top <= offset) current = a.dataset.target;
+        });
+        // at the very bottom of the page, the last section is the current one
+        if (scroller && scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4) {
+          current = links[links.length - 1].dataset.target;
+        }
+        links.forEach(a => a.classList.toggle("active", a.dataset.target === current));
+      }
+      function request(e) {
+        const t = e && (e.target === document ? document.scrollingElement : e.target);
+        if (t && t.scrollHeight > t.clientHeight) scroller = t;
+        if (!ticking) { ticking = true; requestAnimationFrame(update); }
+      }
+      document.addEventListener("scroll", request, true);
+      window.addEventListener("resize", request);
+      setInterval(update, 700);  // after Streamlit re-renders the menu
+      update();
+    })();`;
+  doc.body.appendChild(script);
+})();
+</script>
+"""
+
+
+def scroll_spy():
+    """Invisible helper: colours in blue the menu entry of the section on screen."""
+    components.html(SCROLL_SPY_JS.replace("__OFFSET__", str(BAR_HEIGHT + 90)), height=0)
 
 
 def section(anchor_id, title):

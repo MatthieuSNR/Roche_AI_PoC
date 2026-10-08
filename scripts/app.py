@@ -67,6 +67,7 @@ SECTIONS = [
 ]
 SECTION_TITLES = dict(SECTIONS)
 ui.top_bar("ION Material Availability", "Insights from Planner Comments", SECTIONS)
+ui.scroll_spy()  # menu entry of the section on screen in blue
 
 # Filters
 st.sidebar.header("Filters")
