@@ -230,7 +230,7 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
 - **DataFrames**: Display cleaned data and results.
 - **Plots**: Render matplotlib/seaborn visualizations.
 - **`st.cache_data`**: The comments file is read once, not at every click.
-- **Theme + custom CSS** (`.streamlit/config.toml`, `scripts/ui.py`): a look close to the existing Roche **ION Material Availability** dashboard (Roche logo, blue panel headers, square corners, material status tiles), so planners recognise the tool. The logo file (`assets/roche_logo.png`) is kept local and not pushed to GitHub.
+- **Theme + custom CSS** (`.streamlit/config.toml`, `scripts/ui.py`): a look close to the existing Roche **ION Material Availability** dashboard (Roche logo, blue panel headers, square corners, material status tiles), so planners recognise the tool. The logo is in `assets/roche_logo.png`.
 
 ### **Alternatives Considered**
  | **Alternative** | **Rejection Reason**                                                                                     |
