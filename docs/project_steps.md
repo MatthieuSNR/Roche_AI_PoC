@@ -30,7 +30,7 @@
   - Comment-centred statistics (`scripts/stats_engine.py`): share of the selection vs all comments,
     root causes per vendor / MRP controller, where a root cause comes from, how long comments stay open.
 - **Tools**: `streamlit`, `pandas`, `matplotlib`.
-- **Output**: `scripts/app.py` (dashboard with 7 tabs).
+- **Output**: `scripts/app.py` (one scrolling page: overview + 7 sections, top menu to jump between them; layout in `scripts/ui.py`).
 
 ## 🔄 Updating the Data (new snapshots)
 Run everything from the project root, with the virtual environment active:

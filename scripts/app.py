@@ -54,8 +54,19 @@ for col in ["Snapshot_Date", "First_Seen", "Last_Seen"]:
 
 
 
-# Title
-ui.top_bar("ION Material Availability", "Insights from Planner Comments")
+# Title + navigation menu (each entry scrolls down to its section; all sections follow each other)
+SECTIONS = [
+    ("overview", "🏠 Overview"),
+    ("filtered-comments", "💬 Filtered Comments"),
+    ("top-root-causes", "🔥 Top Root Causes"),
+    ("frequent-comments", "📊 Most Frequent Comments"),
+    ("root-cause-details", "🔎 Comments for a Root Cause"),
+    ("trends", "📈 Root Cause Trends"),
+    ("key-statistics", "📋 Key Statistics"),
+    ("ai-summary", "🤖 AI Summary"),
+]
+SECTION_TITLES = dict(SECTIONS)
+ui.top_bar("ION Material Availability", "Insights from Planner Comments", SECTIONS)
 
 # Filters
 st.sidebar.header("Filters")
@@ -142,42 +153,40 @@ selection_parts = [p for p in [vendor_name_only, selected_mrp, selected_material
                                selected_root_cause] if p != "All"]
 selection_name = " / ".join(selection_parts) if selection_parts else "All comments"
 
-# Compute all statistics ONCE (used by all tabs and the AI Summary)
+# Compute all statistics ONCE (used by all sections and the AI Summary)
 stats = compute_stats(filtered_df, df)
+
+# ================= OVERVIEW =================
+ui.section("overview", "🏠 Overview — " + selection_name)
 
 # --- Headline: where the selection stands among all comments ---
 if stats["total_comments"] > 0:
-    st.caption(
+    st.markdown(
         f"**{selection_name}**: {stats['total_comments']} comments "
         f"(**{stats['share_of_all_comments_pct']}%** of all {len(df)} comments) · "
         f"{stats['root_cause_coverage_pct']}% have a root cause · "
         f"{stats['comments_still_open']} still visible on the last snapshot ({stats['latest_snapshot']})"
     )
 
-# --- Material status tiles (ION colour code), for the comments of the selection ---
-ui.panel_header("Material Status Distribution — commented MRP elements of the selection")
+# --- Material status tiles (ION colour code) ---
+# Each comment is written on an MRP element (a material / purchase order line of the ION
+# workbench). The tiles count the comments by the ION status of that element.
+ui.panel_header("Material status of the commented items")
 ui.status_tiles(stats.get("material_status_counts", {}), stats["total_comments"])
+st.caption("Each comment is written on an item of the ION workbench (a material / purchase order line). "
+           "The tiles show the status of that item the last time the comment was visible, e.g. how many "
+           "comments concern items in Actual Stock Out.")
 ui.status_definitions()
 
-ui.panel_header("Comment Analysis")
-
-# --- Tabs: organize the analysis into navigable sections ---
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
-    "💬 Filtered Comments",
-    "🔥 Top Root Causes",
-    "📊 Most Frequent Comments",
-    "🔎 Comments for a Root Cause",
-    "📈 Root Cause Trends Over Time",
-    "📋 Key Statistics",
-    "🤖 AI Summary"
-])
+# --- Sections: all analyses follow each other on one page (menu at the top to jump) ---
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = [st.container() for _ in range(7)]
 
 
 
-# ================= TAB 1: Filtered Comments =================
+# ================= SECTION 1: Filtered Comments =================
 
 with tab1:
-    ui.panel_header("Filtered Comments")
+    ui.section("filtered-comments", SECTION_TITLES["filtered-comments"])
     show_original = st.checkbox("Show the original (German) comment next to the translation")
     columns = ["Comment_EN"] + (["Comment"] if show_original else []) + [
         "First_Seen", "Last_Seen", "Days_Active", "STOCKOUT_DATE", "MATERIAL_STATUS",
@@ -214,10 +223,10 @@ with tab1:
                "'Days visible' = for how many days the comment stayed in the dashboard.")
 
 
-# ================= TAB 2: Top Root Causes =================
+# ================= SECTION 2: Top Root Causes =================
 
 with tab2:
-    ui.panel_header("Top Root Causes")
+    ui.section("top-root-causes", SECTION_TITLES["top-root-causes"])
 
     top_n_causes = st.radio(
         "Show:", options=["Top 5", "Top 10", "Top 20"], horizontal=True,
@@ -300,10 +309,10 @@ with tab2:
                    f"'Other' = all remaining root causes beyond the Top {n_causes} ({other_count} comments).")
 
 
-# ================= TAB 3: Most Frequent Comments =================
+# ================= SECTION 3: Most Frequent Comments =================
 
 with tab3:
-    ui.panel_header("Most Frequent Comments")
+    ui.section("frequent-comments", SECTION_TITLES["frequent-comments"])
 
     top_n_comments = st.radio(
         "Show:", options=["Top 5", "Top 10", "Top 20"], horizontal=True,
@@ -336,10 +345,10 @@ with tab3:
                "Days visible = total days these comments stayed in the dashboard.")
 
 
-# ================= TAB 4: Comments for a Root Cause =================
+# ================= SECTION 4: Comments for a Root Cause =================
 
 with tab4:
-    ui.panel_header("🔎 Comments for a Specific Root Cause")
+    ui.section("root-cause-details", SECTION_TITLES["root-cause-details"])
     # Show all root causes of the filtered data (not just top N)
     causes_available = filtered_df["Root_Cause"].value_counts().index.tolist()
     if causes_available:
@@ -383,9 +392,9 @@ with tab4:
 
 
 
-# ================= TAB 5: Root Cause Trends Over Time =================
+# ================= SECTION 5: Root Cause Trends Over Time =================
 with tab5:
-    ui.panel_header("📈 Root Cause Trends Over Time")
+    ui.section("trends", SECTION_TITLES["trends"])
 
     # 1. Count comments visible each week, per root cause — pandas does the math
     #    (snapshots are daily: a weekly view is readable and a comment open for
@@ -428,9 +437,9 @@ with tab5:
 
 
 
-# ================= TAB 6: Key Statistics =================
+# ================= SECTION 6: Key Statistics =================
 with tab6:
-    ui.panel_header("📋 Key Statistics")
+    ui.section("key-statistics", SECTION_TITLES["key-statistics"])
 
     # Handle the empty case first (avoid crashes on very narrow filters)
     if stats["total_comments"] == 0:
@@ -451,7 +460,8 @@ with tab6:
 
         with col3:
             st.metric("Median days visible", f"{stats['median_days_active']:.0f}",
-                      delta=f"{stats['median_days_active'] - stats['median_days_active_all']:+.0f} vs all",
+                      delta=(f"{stats['median_days_active'] - stats['median_days_active_all']:+.0f} vs all"
+                             if stats['median_days_active'] != stats['median_days_active_all'] else None),
                       delta_color="inverse")
             st.caption(f"{stats['comments_still_open']} still visible on {stats['latest_snapshot']} "
                        f"({stats['comments_still_open_pct']}%)")
@@ -524,9 +534,9 @@ with tab6:
 
 
 
-# ================= TAB 7: AI Summary =================
+# ================= SECTION 7: AI Summary =================
 with tab7:
-    ui.panel_header("🤖 AI Summary (local LLM)")
+    ui.section("ai-summary", SECTION_TITLES["ai-summary"] + " (local LLM)")
     st.caption("Generated locally via LM Studio: no data leaves the machine. "
                "All figures are computed by pandas; the LLM only interprets them.")
 

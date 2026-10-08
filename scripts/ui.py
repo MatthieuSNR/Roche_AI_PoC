@@ -1,13 +1,15 @@
 """
 Layout of the dashboard, close to the Roche ION Material Availability dashboard:
-blue top bar, blue panel headers, coloured material status tiles.
+blue top bar with a navigation menu, blue section headers, coloured material status tiles.
 Also the animated loading screen shown while the AI summary is generated.
 
 Kept apart from app.py so that app.py only contains the analysis.
 """
 
+import base64
 import html
 import json
+import os
 
 import matplotlib.pyplot as plt
 import streamlit as st
@@ -33,33 +35,61 @@ STATUS_DEFINITIONS = {
     "Good Part": "The current delivery confirmation is earlier than the SAP requirement date. The production demand is covered.",
 }
 
+RADIUS = "2px"  # ION uses almost square corners
+LOGO_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "roche_logo.png")
+
 CSS = f"""
 <style>
 .stApp {{ background-color: #F3F5F8; }}
 header[data-testid="stHeader"] {{ background: transparent; }}
 .block-container {{ padding-top: 1.2rem; }}
 section[data-testid="stSidebar"] {{ background-color: #FFFFFF; border-right: 1px solid #E1E5EB; }}
+html, .main, [data-testid="stAppViewContainer"] {{ scroll-behavior: smooth; }}
+
+/* Square corners on the Streamlit widgets too */
+[data-baseweb="select"] > div, [data-baseweb="input"], [data-baseweb="popover"] ul, .stButton > button,
+.stDateInput > div > div, [data-testid="stExpander"] details, [data-testid="stDataFrame"],
+[data-testid="stDataFrameResizable"], [data-testid="stNotification"], [data-testid="stAlert"] > div {{
+  border-radius: {RADIUS} !important;
+}}
 
 .ion-topbar {{
-  background: {ION_BLUE}; color: #fff; border-radius: 4px; padding: 10px 18px; margin-bottom: 14px;
+  background: {ION_BLUE}; color: #fff; border-radius: {RADIUS}; padding: 8px 18px; margin-bottom: 0;
   display: flex; align-items: center; justify-content: space-between; box-shadow: 0 1px 3px rgba(0,0,0,.15);
 }}
-.ion-topbar .brand {{ display: flex; align-items: center; gap: 12px; font-size: 1.15rem; font-weight: 600; }}
+.ion-topbar .brand {{ display: flex; align-items: center; gap: 14px; font-size: 1.15rem; font-weight: 600; }}
+.ion-topbar .brand img {{ height: 30px; display: block; }}
 .ion-topbar .hex {{
   border: 2px solid #fff; padding: 1px 10px; font-weight: 700; font-size: .95rem;
   clip-path: polygon(12% 0, 88% 0, 100% 50%, 88% 100%, 12% 100%, 0 50%);
 }}
 .ion-topbar .sub {{ font-size: .85rem; opacity: .9; }}
-.ion-topbar .tag {{ background: rgba(255,255,255,.18); border-radius: 3px; padding: 2px 8px; font-size: .8rem; }}
+.ion-topbar .tag {{ background: rgba(255,255,255,.18); border-radius: {RADIUS}; padding: 2px 8px; font-size: .8rem; }}
+
+/* Navigation menu: stays at the top of the page while scrolling */
+div[data-testid="stVerticalBlock"] > div:has(> div > div > .ion-nav),
+div[data-testid="stVerticalBlock"] > div:has(.ion-nav) {{ position: sticky; top: 0; z-index: 990; }}
+.ion-nav {{
+  display: flex; flex-wrap: wrap; gap: 2px; background: #fff; border: 1px solid #D6DCE5; border-top: none;
+  padding: 4px; box-shadow: 0 2px 4px rgba(0,0,0,.06);
+}}
+.ion-nav a {{
+  color: #1F2937 !important; text-decoration: none !important; font-size: .86rem; padding: 6px 12px;
+  border-radius: {RADIUS}; white-space: nowrap;
+}}
+.ion-nav a:hover {{ background: {ION_BLUE}; color: #fff !important; }}
+.ion-anchor {{ scroll-margin-top: 120px; height: 0; }}
 
 .ion-panel {{
-  background: {ION_BLUE}; color: #fff; font-weight: 600; padding: 7px 14px; border-radius: 4px 4px 0 0;
+  background: {ION_BLUE}; color: #fff; font-weight: 600; padding: 7px 14px; border-radius: {RADIUS};
   margin: 18px 0 8px 0; font-size: .98rem;
 }}
+.ion-section {{ margin-top: 26px; }}
+.ion-section .ion-panel {{ font-size: 1.05rem; padding: 9px 14px; }}
 
 .ion-tiles {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 4px 0 6px 0; }}
 .ion-tile {{
-  position: relative; color: #fff; border-radius: 4px; padding: 12px 16px; min-height: 86px; overflow: hidden;
+  position: relative; color: #fff; border-radius: {RADIUS}; padding: 12px 16px; min-height: 86px; overflow: hidden;
   box-shadow: 0 1px 3px rgba(0,0,0,.15);
 }}
 .ion-tile .num {{ font-size: 2rem; font-weight: 700; line-height: 1.1; }}
@@ -72,15 +102,8 @@ section[data-testid="stSidebar"] {{ background-color: #FFFFFF; border-right: 1px
 .ion-tile.light {{ color: #3A3A3A; }}
 @media (max-width: 900px) {{ .ion-tiles {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }} }}
 
-.stTabs [data-baseweb="tab-list"] {{ gap: 4px; border-bottom: 2px solid #D6DCE5; }}
-.stTabs [data-baseweb="tab"] {{
-  background: #fff; border: 1px solid #D6DCE5; border-bottom: none; border-radius: 4px 4px 0 0; padding: 6px 14px;
-}}
-.stTabs [aria-selected="true"] {{ background: {ION_BLUE}; color: #fff; }}
-.stTabs [aria-selected="true"] p {{ color: #fff; }}
-
 .ai-result {{
-  background: #fff; border-left: 4px solid {ROCHE_BLUE}; border-radius: 4px; padding: 16px 20px;
+  background: #fff; border-left: 4px solid {ROCHE_BLUE}; border-radius: {RADIUS}; padding: 16px 20px;
   box-shadow: 0 1px 3px rgba(0,0,0,.12); line-height: 1.6;
 }}
 .ai-result .meta {{ color: #6B7280; font-size: .8rem; margin-top: 10px; }}
@@ -101,17 +124,44 @@ def apply_style():
     })
 
 
-def top_bar(title, subtitle, tag="AI PoC"):
+def _logo_html():
+    """Roche logo from assets/roche_logo.png (kept local, not on GitHub); text badge if missing."""
+    if os.path.exists(LOGO_PATH):
+        with open(LOGO_PATH, "rb") as f:
+            data = base64.b64encode(f.read()).decode()
+        return f'<img src="data:image/png;base64,{data}" alt="Roche">'
+    return '<span class="hex">Roche</span>'
+
+
+def _label(text):
+    """Escape a label and keep the space after its emoji (Streamlit's markdown drops it)."""
+    return html.escape(text).replace(" ", "&nbsp;", 1)
+
+
+def top_bar(title, subtitle, sections, tag="AI PoC"):
+    """Blue title bar + navigation menu. sections = [(anchor_id, label)]: clicking a label
+    scrolls down to that section; the menu stays visible at the top of the page."""
     st.markdown(
-        f'<div class="ion-topbar"><div class="brand"><span class="hex">Roche</span>'
+        f'<div class="ion-topbar"><div class="brand">{_logo_html()}'
         f'<span>{html.escape(title)}</span><span class="sub">{html.escape(subtitle)}</span></div>'
         f'<span class="tag">{html.escape(tag)}</span></div>',
+        unsafe_allow_html=True,
+    )
+    links = "".join(f'<a href="#{a}" target="_self">{_label(label)}</a>' for a, label in sections)
+    st.markdown(f'<div class="ion-nav">{links}</div>', unsafe_allow_html=True)
+
+
+def section(anchor_id, title):
+    """Start of a page section: anchor for the menu + blue header."""
+    st.markdown(
+        f'<div class="ion-section"><div id="{anchor_id}" class="ion-anchor"></div>'
+        f'<div class="ion-panel">{_label(title)}</div></div>',
         unsafe_allow_html=True,
     )
 
 
 def panel_header(title):
-    """Blue section header, like the panels of the ION dashboard."""
+    """Blue sub-header inside a section, like the panels of the ION dashboard."""
     st.markdown(f'<div class="ion-panel">{html.escape(title)}</div>', unsafe_allow_html=True)
 
 
@@ -168,7 +218,7 @@ LOADING_HTML = """
 <style>
   * { box-sizing: border-box; }
   body { margin: 0; font-family: -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
-  .ai { display: flex; gap: 22px; padding: 22px; border-radius: 6px; color: #fff; height: 100vh;
+  .ai { display: flex; gap: 22px; padding: 22px; border-radius: 2px; color: #fff; height: 100vh;
         background: radial-gradient(circle at 15% 20%, #2D6BFF 0%, #0B41CD 40%, #021E66 100%); overflow: hidden; }
   .left { width: 210px; flex-shrink: 0; text-align: center; }
   .brain { width: 170px; height: 170px; }

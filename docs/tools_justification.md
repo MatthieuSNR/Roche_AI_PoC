@@ -226,11 +226,11 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
 
 ### **Key Features Used in the Project**
 - **Widgets**: Sidebar filters (vendor, MRP controller, material, root cause, period), radio buttons, buttons.
-- **Tabs**: 7 analysis tabs (comments, root causes, frequent comments, root cause details, trends, statistics, AI summary).
+- **One scrolling page**: an overview (ION material status tiles) followed by 7 analysis sections (comments, root causes, frequent comments, root cause details, trends, statistics, AI summary), with a menu that stays at the top of the page to jump to a section.
 - **DataFrames**: Display cleaned data and results.
 - **Plots**: Render matplotlib/seaborn visualizations.
 - **`st.cache_data`**: The comments file is read once, not at every click.
-- **Theme + custom CSS** (`.streamlit/config.toml`, `scripts/ui.py`): a look close to the existing Roche **ION Material Availability** dashboard (blue panel headers, material status tiles), so planners recognise the tool.
+- **Theme + custom CSS** (`.streamlit/config.toml`, `scripts/ui.py`): a look close to the existing Roche **ION Material Availability** dashboard (Roche logo, blue panel headers, square corners, material status tiles), so planners recognise the tool. The logo file (`assets/roche_logo.png`) is kept local and not pushed to GitHub.
 
 ### **Alternatives Considered**
  | **Alternative** | **Rejection Reason**                                                                                     |
