@@ -16,8 +16,12 @@ import ui
 
 
 
+# Browser tab icon: the Roche logo in blue (assets/favicon.png), an emoji if the file is missing
+FAVICON_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "favicon.png")
+
 st.set_page_config(
     page_title="Roche AI PoC - NLP Insights",
+    page_icon=FAVICON_PATH if os.path.exists(FAVICON_PATH) else "🔷",
     layout="wide",
 )
 ui.apply_style()  # Look of the Roche ION Material Availability dashboard (scripts/ui.py)
