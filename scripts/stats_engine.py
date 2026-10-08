@@ -129,6 +129,15 @@ def compute_stats(filtered_df: pd.DataFrame, all_df: pd.DataFrame | None = None)
         c for c in filtered_df["Comment_EN"].value_counts().head(5).index
     ]
 
+    # 9. Evidence for the LLM: the most frequent INFORMATIVE comments (>= 25 characters,
+    #    short codes like "PX13" say nothing) of each of the 3 main root causes
+    def informative_comments(cause, n=3):
+        texts = filtered_df.loc[filtered_df["Root_Cause"] == cause, "Comment_EN"].dropna().astype(str).str.strip()
+        counts = texts[texts.str.len() >= 25].value_counts()
+        return [c[:160] for c in counts.head(n).index]
+
+    stats["comments_by_root_cause"] = {cause: informative_comments(cause) for cause in cause_counts.head(3).index}
+
     return stats
 
 

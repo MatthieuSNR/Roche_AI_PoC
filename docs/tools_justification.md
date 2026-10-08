@@ -173,6 +173,7 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
 - **`chat.completions.create()`** with low temperature (0.2) for factual answers.
 - **Compact prompt** (`build_facts`): only the key statistics, without indentation or duplicated figures (≈800 tokens instead of ≈1,500), and every key states its unit (`_pct` = percentage, otherwise a count) after the model turned "+75 comments" into "+75%" in a test.
 - **Streaming** (`stream_summary`): the summary appears word by word in the dashboard as soon as the model starts writing.
+- **Structured, in-depth analysis**: 250–350 words in five fixed sections (Key findings, Trend over time, Where the issues come from, Risks to escalate, Recommended actions), rendered as headings and bullet points. The prompt includes the most frequent informative comments of the three main root causes, and the model must quote at least one comment word for word, so the analysis explains *why* and not only *how much*.
 - **Speed on the laptop** (Apple M3, 16 GB): Mistral 7B Q4_K_M writes ≈5 tokens/s when the Mac is short of memory (swap used), so a summary takes 40–60 s. Closing other applications frees memory for the model; smaller models (3–4B) are an option if speed matters more than quality.
 - **Server check** (`is_server_available`) so the dashboard shows a clear message when LM Studio is not running.
 

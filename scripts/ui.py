@@ -10,6 +10,7 @@ import base64
 import html
 import json
 import os
+import re
 
 import matplotlib.pyplot as plt
 import streamlit as st
@@ -137,6 +138,14 @@ div[data-testid="element-container"]:has( iframe[height="0"]) {{ display: none; 
   box-shadow: 0 1px 3px rgba(0,0,0,.12); line-height: 1.6;
 }}
 .ai-result .meta {{ color: #6B7280; font-size: .8rem; margin-top: 10px; }}
+.ai-result h4 {{
+  color: {ION_BLUE}; font-size: 1rem; font-weight: 700; margin: 16px 0 6px 0; padding-bottom: 4px;
+  border-bottom: 1px solid #E1E5EB;
+}}
+.ai-result h4:first-child {{ margin-top: 0; }}
+.ai-result ul {{ margin: 0 0 4px 0; padding-left: 22px; }}
+.ai-result li {{ margin: 4px 0; }}
+.ai-result p {{ margin: 6px 0; }}
 </style>
 """
 
@@ -401,8 +410,48 @@ def ai_loading_screen(steps, total, sub, comments, step_ms=900, height=380):
     components.html(LOADING_HTML.replace("__DATA__", payload), height=height)
 
 
+SECTION_ICONS = {
+    "key findings": "🔎", "trend over time": "📈", "where the issues come from": "🏭",
+    "risks to escalate": "⚠️", "recommended actions": "✅",
+}
+
+
+def _inline(text):
+    """Escape a line and keep **bold**."""
+    return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", html.escape(text))
+
+
+def summary_to_html(text):
+    """Render the LLM answer (### headings, '- ' bullets, **bold**) as HTML sections.
+    Robust to small format variations of the model ("**Key findings:**", "1. ...")."""
+    out, in_list = [], False
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line:
+            continue
+        name = re.sub(r"^#+\s*|\*\*|:$", "", line).strip().rstrip(":").strip()
+        if line.startswith("#") or name.lower() in SECTION_ICONS:
+            if in_list:
+                out.append("</ul>"); in_list = False
+            icon = SECTION_ICONS.get(name.lower(), "•")
+            out.append(f'<h4><span class="emo">{icon}</span>{html.escape(name)}</h4>')
+            continue
+        bullet = re.match(r"^(?:[-*•]|\d+[.)])\s+(.*)", line)
+        if bullet:
+            if not in_list:
+                out.append("<ul>"); in_list = True
+            out.append(f"<li>{_inline(bullet.group(1))}</li>")
+        else:
+            if in_list:
+                out.append("</ul>"); in_list = False
+            out.append(f"<p>{_inline(line)}</p>")
+    if in_list:
+        out.append("</ul>")
+    return "".join(out)
+
+
 def ai_result_html(text, meta):
-    return (f'<div class="ai-result">{html.escape(text).replace(chr(10), "<br>")}'
+    return (f'<div class="ai-result">{summary_to_html(text)}'
             f'<div class="meta">{html.escape(meta)}</div></div>')
 
 
