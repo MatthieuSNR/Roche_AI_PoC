@@ -1,54 +1,74 @@
-# Roche AI PoC: Material Availability Dashboard
+# Roche AI PoC: NLP Insights from Planner Comments
 
-Statistics-first analytics on weekly material-availability snapshots, with classical NLP for the
-planner comments and a **local** LLM (LM Studio) that phrases the computed facts.
-Design rationale: [docs/architecture.md](docs/architecture.md).
+## 🎯 Project Overview
+This project aims to **extract actionable insights** for Roche’s planner comments using **Natural Language Processing (NLP)**. The goal is to:
+- **Quantify recurring issues** (e.g., "50% of delays for Supplier X are due to capacity issues").
+- **Identify patterns** in comments (e.g., "urgent" + "Supplier Y" often leads to Stock Out).
+- **Provide filters** in a Streamlit dashboard to analyze comments by **supplier, material, or root cause**.
 
-## Structure
+## 📊 Current Status
+- **Data Cleaning**: All comments from `Snapshot_2026` are cleaned and stored in `data/cleaned_comments.csv`.
+- **Streamlit Dashboard**: A basic dashboard (`scripts/app.py`) displays comments with filters for **vendor, material, and root cause**.
+- **Next Steps**: Deepen NLP analysis (keyword extraction, root cause correlations).
+
+## 🛠️ Tools & Libraries
+   Tool/Library   | Version   | Purpose                          |
+ |----------------|-----------|----------------------------------|
+ | Python         | 3.12.4    | Primary scripting language       |
+ | pandas         | 2.2.3     | Data manipulation                |
+ | spaCy          | 3.8.16    | NLP (text preprocessing)         |
+ | Streamlit      | 1.32.0    | Interactive dashboard            |
+ | matplotlib     | 3.7.2     | Visualizations                   |
+ | seaborn        | 0.12.2    | Statistical plots                |
+
+*(See [docs/tools_justification.md](docs/tools_justification.md) for detailed justifications.)*
+
+## 📁 Project Structure
 
 ```
-src/roche_poc/        the engine (no Streamlit dependency)
-  config.py           paths, columns, statuses, thresholds
-  data/               loading, cleaning, build_tables  -> snapshots + comments tables
-  stats/              kpis, persistence, trends, watchlist, profile
-  nlp/                language, translation (DeepL), preprocessing, keywords, themes (empty)
-  llm/                client, prompts, summary, validation
-  ml/                 (empty) predictive analytics, later
-dashboard/            Streamlit multipage app: Home + Supplier / MRP controller / Material / AI summary
-notebooks/            01 data build · 02 statistics · 03 NLP · 04 LLM · 05 ML (empty) · _legacy
-tests/                synthetic fixtures, no Roche data
-data/                 raw/ interim/ processed/  (git-ignored: confidential)
-docs/                 architecture, tools justification, project steps
+Roche_AI_PoC/
+├── data/
+│   ├── Snapshot_2026/           # Raw data (not pushed to GitHub)
+│   └── cleaned_comments.csv     # Cleaned data for analysis
+│
+├── docs/
+│   ├── project_steps.md         # Step-by-step methodology
+│   └── tools_justification.md   # Tools/libraries justification
+│
+├── outputs/                     # Generated outputs (models, visualizations)
+│
+├── scripts/
+│   ├── app.py                   # Streamlit dashboard
+│   ├── nlp_analysis.ipynb       # NLP analysis Notebook
+│   ├── data_cleaning.py         # Data cleaning script
+│   └──                   
+│
+└── README.md
 ```
 
-Notebooks drive, `.py` files hold the logic: nothing is defined twice.
+## 🚀 How to Run
+1. **Set up the environment**:
+   ```bash
+   source venv/bin/activate
+   pip install -r requirements.txt
+   python -m spacy download en_core_web_sm
+   python -m spacy download de_core_news_sm
 
-## Quick start
+2. **Launch the Streamlit dashboard**:
+    ```bash
+    streamlit run scripts/app.py
 
-```bash
-python -m venv venv && source venv/bin/activate
-pip install -r requirements.txt && pip install -e .
-python -m spacy download en_core_web_sm        # only needed for lemmatisation
-cp .env.example .env                           # then fill DEEPL_API_KEY
 
-# 1. put the raw snapshot CSVs in data/raw/Snapshot_2026/
-python -m roche_poc.data.build_tables          # -> data/processed/*.parquet
-# 2. (optional) translate German comments: notebooks/03_nlp_translation.ipynb
-# 3. dashboard
-streamlit run dashboard/Home.py
-```
 
-AI summary: start LM Studio (Developer tab -> *Server: Running*, port 1234), load the model, open the
-*AI Summary* page. The base URL must end with `/v1` (see `.env.example`).
+test
 
-## Tests
 
-```bash
-pytest                      # or: python tests/run_tests.py  (no pytest needed)
-```
 
-## Security
 
-* Never commit `.env`, `data/` or notebook outputs containing comments (the root `.gitignore` excludes
-  the first two; clear notebook outputs, e.g. with `nbstripout`, before pushing).
-* If a key was ever committed, revoking it is mandatory: deleting the file does not remove it from git history.
+
+
+
+
+
+
+

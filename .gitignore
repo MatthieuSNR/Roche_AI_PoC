@@ -12,14 +12,10 @@ data/*.csv
 data/*.CSV
 data/*.parquet
 data/*.xlsx
-# Keep the folder skeleton
-!data/raw/.gitkeep
-!data/interim/.gitkeep
-!data/processed/.gitkeep
 
 # --- Generated outputs ---
 outputs/*
-!outputs/.gitkeep
+!outputs/visualization.py
 
 # --- Environments and caches ---
 venv/
@@ -34,3 +30,6 @@ __pycache__/
 .DS_Store
 .idea/
 .vscode/
+
+# --- Local tool config ---
+.claude/
