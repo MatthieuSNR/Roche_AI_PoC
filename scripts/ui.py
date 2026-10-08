@@ -37,6 +37,9 @@ STATUS_DEFINITIONS = {
 
 RADIUS = "2px"  # ION uses almost square corners
 BAR_HEIGHT = 54  # px, height of the blue top bar (fixed, full width)
+# Chevron pointing left (same icon family as Streamlit's "open sidebar" arrow)
+CHEVRON_LEFT = ("url(\"data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E"
+                "%3Cpath d='M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z'/%3E%3C/svg%3E\")")
 LOGO_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "roche_logo.png")
 
 CSS = f"""
@@ -54,6 +57,19 @@ section[data-testid="stSidebar"] {{
   top: {BAR_HEIGHT}px !important; height: calc(100vh - {BAR_HEIGHT}px) !important;
 }}
 [data-testid="collapsedControl"], [data-testid="stSidebarCollapsedControl"] {{ top: {BAR_HEIGHT + 8}px !important; }}
+/* "Close sidebar" button: a left arrow instead of the cross */
+section[data-testid="stSidebar"] button[data-testid="baseButton-header"] svg {{ display: none; }}
+section[data-testid="stSidebar"] button[data-testid="baseButton-header"]::before {{
+  content: ""; display: block; width: 1.5rem; height: 1.5rem; background-color: currentColor;
+  -webkit-mask: {CHEVRON_LEFT} center / contain no-repeat; mask: {CHEVRON_LEFT} center / contain no-repeat;
+}}
+
+/* Charts: white cards, centred, same look everywhere */
+[data-testid="stImage"] {{ display: flex; justify-content: center; }}
+[data-testid="stImage"] img {{
+  background: #fff; border: 1px solid #E1E5EB; border-radius: {RADIUS}; padding: 10px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.05); max-width: 100%; box-sizing: border-box;
+}}
 html, .main, [data-testid="stAppViewContainer"] {{ scroll-behavior: smooth; }}
 
 /* Square corners on the Streamlit widgets too */

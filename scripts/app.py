@@ -253,23 +253,28 @@ with tab2:
         max_count = root_cause_counts.max()
         colors = [colormap(count / max_count) for count in root_cause_counts.values]
 
-        # Bar chart and pie side by side (Streamlit stacks the columns on a small screen)
-        col_bar, col_pie = st.columns([3, 2], gap="large")
+        # Bar chart and pie side by side (Streamlit stacks the columns on a small screen).
+        # Both figures have the SAME height and widths in the same ratio as the columns (3:2),
+        # so they are displayed at the same height and grow / shrink with the screen.
+        col_bar, col_pie = st.columns([3, 2], gap="medium")
+        chart_height = max(3.6, len(root_cause_counts) * 0.26)
 
         # 4. Plot (horizontal bars: easier to read long root cause names)
-        fig, ax = plt.subplots(figsize=(9, max(4.6, len(root_cause_counts) * 0.45)))
+        fig, ax = plt.subplots(figsize=(6, chart_height), facecolor="white")
         bars = ax.barh(root_cause_counts.index[::-1], root_cause_counts.values[::-1],
                     color=colors[::-1])
         ax.set_title(f"Top {n_causes} Root Causes — {selection_name}")
         ax.set_xlabel("Number of Comments")
+        ax.set_xlim(0, max_count * 1.22)  # room for the labels at the end of the bars
 
         # Add the count and the share of the selection's comments at the end of each bar
         for bar, count in zip(bars, root_cause_counts.values[::-1]):
             ax.text(bar.get_width() + max_count * 0.01, bar.get_y() + bar.get_height() / 2,
-                    f"{count} ({count / total_comments * 100:.1f}%)", va="center")
+                    f"{count} ({count / total_comments * 100:.1f}%)", va="center", fontsize=8)
+        fig.tight_layout()
 
         with col_bar:
-            st.pyplot(fig)
+            st.pyplot(fig, bbox_inches=None)  # keep the exact figure size (same height as the pie)
             st.caption(f"% = share of the {total_comments} comments of the selection. "
                        f"{no_cause_count} comments ({no_cause_count / total_comments * 100:.1f}%) have no root cause.")
 
@@ -285,8 +290,12 @@ with tab2:
             pie_labels.append("Other")
             pie_values.append(other_count)
 
-        # Small pie with a legend (labels on the slices overlap when there are many causes)
-        fig_pie, ax_pie = plt.subplots(figsize=(4, 4.8))
+        # Pie on top, legend below (labels on the slices overlap when there are many causes)
+        fig_pie = plt.figure(figsize=(3.85, chart_height), facecolor="white")  # 3.85: same height as the bars once in the cards
+        legend_rows = -(-len(pie_labels) // 2)
+        legend_frac = (0.15 + legend_rows * 0.15) / chart_height
+        title_frac = 0.35 / chart_height
+        ax_pie = fig_pie.add_axes([0.02, legend_frac + 0.02, 0.96, 1 - legend_frac - title_frac - 0.03])
         palette = plt.cm.tab20.colors if len(top_counts) > 12 else plt.cm.Set3.colors
         pie_colors = list(palette[:len(top_counts)]) + (["#BDBDBD"] if other_count > 0 else [])  # "Other" in grey
         wedges, _, _ = ax_pie.pie(
@@ -298,14 +307,14 @@ with tab2:
             wedgeprops={"edgecolor": "white", "linewidth": 1},
             textprops={"fontsize": 8},
         )
-        ax_pie.set_title(f"Root Cause Share — {selection_name}", fontsize=10)
-        legend_labels = [l if len(l) <= 30 else l[:29] + "…" for l in pie_labels]
-        ax_pie.legend(wedges, legend_labels, loc="upper center", bbox_to_anchor=(0.5, 0.0),
-                      ncol=2, fontsize=7, frameon=False)
-        fig_pie.tight_layout()
+        fig_pie.suptitle(f"Root Cause Share — {selection_name}", fontsize=10, fontweight="bold",
+                         y=1 - 0.08 / chart_height)
+        legend_labels = [l if len(l) <= 26 else l[:25] + "…" for l in pie_labels]
+        fig_pie.legend(wedges, legend_labels, loc="lower center", bbox_to_anchor=(0.5, 0.01),
+                       ncol=2, fontsize=7, frameon=False, handlelength=1, columnspacing=1)
 
         with col_pie:
-            st.pyplot(fig_pie, use_container_width=False, dpi=90)  # fixed size (~360 px wide)
+            st.pyplot(fig_pie, bbox_inches=None)
             # Keep the caption only for the "Other" context
             st.caption(f"Share among the comments WITH a root cause. "
                        f"'Other' = all remaining root causes beyond the Top {n_causes} ({other_count} comments).")
