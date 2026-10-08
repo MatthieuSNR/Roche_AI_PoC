@@ -1,0 +1,8 @@
+# Theme close to the Roche ION Material Availability dashboard (see scripts/ui.py)
+[theme]
+base = "light"
+primaryColor = "#1A73E8"
+backgroundColor = "#F3F5F8"
+secondaryBackgroundColor = "#FFFFFF"
+textColor = "#1F2937"
+font = "sans serif"

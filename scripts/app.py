@@ -5,11 +5,14 @@ import matplotlib.colors as mcolors
 import numpy as np
 import os
 import sys
+import threading
+import time
 
 # Make scripts/ importable so we can reuse our modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from llm_summary import generate_summary, is_server_available
 from stats_engine import compute_stats, root_cause_sources, weekly_active, NO_ROOT_CAUSE
+import ui
 
 
 
@@ -17,6 +20,7 @@ st.set_page_config(
     page_title="Roche AI PoC - NLP Insights",
     layout="wide",
 )
+ui.apply_style()  # Look of the Roche ION Material Availability dashboard (scripts/ui.py)
 
 
 # Load cleaned data (built by scripts/data_cleaning.py, translated by scripts/translation.py)
@@ -51,7 +55,7 @@ for col in ["Snapshot_Date", "First_Seen", "Last_Seen"]:
 
 
 # Title
-st.title("Material availability dashboard: Insights from Planner Comments")
+ui.top_bar("ION Material Availability", "Insights from Planner Comments")
 
 # Filters
 st.sidebar.header("Filters")
@@ -150,6 +154,13 @@ if stats["total_comments"] > 0:
         f"{stats['comments_still_open']} still visible on the last snapshot ({stats['latest_snapshot']})"
     )
 
+# --- Material status tiles (ION colour code), for the comments of the selection ---
+ui.panel_header("Material Status Distribution — commented MRP elements of the selection")
+ui.status_tiles(stats.get("material_status_counts", {}), stats["total_comments"])
+ui.status_definitions()
+
+ui.panel_header("Comment Analysis")
+
 # --- Tabs: organize the analysis into navigable sections ---
 tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "💬 Filtered Comments",
@@ -166,7 +177,7 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
 # ================= TAB 1: Filtered Comments =================
 
 with tab1:
-    st.subheader("Filtered Comments")
+    ui.panel_header("Filtered Comments")
     show_original = st.checkbox("Show the original (German) comment next to the translation")
     columns = ["Comment_EN"] + (["Comment"] if show_original else []) + [
         "First_Seen", "Last_Seen", "Days_Active", "STOCKOUT_DATE", "MATERIAL_STATUS",
@@ -206,7 +217,7 @@ with tab1:
 # ================= TAB 2: Top Root Causes =================
 
 with tab2:
-    st.subheader("Top Root Causes")
+    ui.panel_header("Top Root Causes")
 
     top_n_causes = st.radio(
         "Show:", options=["Top 5", "Top 10", "Top 20"], horizontal=True,
@@ -292,7 +303,7 @@ with tab2:
 # ================= TAB 3: Most Frequent Comments =================
 
 with tab3:
-    st.subheader("Most Frequent Comments")
+    ui.panel_header("Most Frequent Comments")
 
     top_n_comments = st.radio(
         "Show:", options=["Top 5", "Top 10", "Top 20"], horizontal=True,
@@ -328,7 +339,7 @@ with tab3:
 # ================= TAB 4: Comments for a Root Cause =================
 
 with tab4:
-    st.subheader("🔎 Comments for a Specific Root Cause")
+    ui.panel_header("🔎 Comments for a Specific Root Cause")
     # Show all root causes of the filtered data (not just top N)
     causes_available = filtered_df["Root_Cause"].value_counts().index.tolist()
     if causes_available:
@@ -374,7 +385,7 @@ with tab4:
 
 # ================= TAB 5: Root Cause Trends Over Time =================
 with tab5:
-    st.subheader("📈 Root Cause Trends Over Time")
+    ui.panel_header("📈 Root Cause Trends Over Time")
 
     # 1. Count comments visible each week, per root cause — pandas does the math
     #    (snapshots are daily: a weekly view is readable and a comment open for
@@ -406,7 +417,7 @@ with tab5:
         st.pyplot(fig)
 
         # 4. Simple numeric insight (computed by pandas, not hallucinated!)
-        st.subheader("Key Numbers")
+        ui.panel_header("Key Numbers")
         if "comments_first_snapshot" in stats:
             first, last = stats["comments_first_snapshot"], stats["comments_last_snapshot"]
             st.metric(
@@ -419,7 +430,7 @@ with tab5:
 
 # ================= TAB 6: Key Statistics =================
 with tab6:
-    st.subheader("📋 Key Statistics")
+    ui.panel_header("📋 Key Statistics")
 
     # Handle the empty case first (avoid crashes on very narrow filters)
     if stats["total_comments"] == 0:
@@ -515,7 +526,7 @@ with tab6:
 
 # ================= TAB 7: AI Summary =================
 with tab7:
-    st.subheader("🤖 AI Summary (local LLM)")
+    ui.panel_header("🤖 AI Summary (local LLM)")
     st.caption("Generated locally via LM Studio: no data leaves the machine. "
                "All figures are computed by pandas; the LLM only interprets them.")
 
@@ -527,16 +538,63 @@ with tab7:
     elif not is_server_available():
         st.warning("LM Studio server not reachable. Start it (Developer tab) and load the model.")
     else:
-        if st.button("Generate summary"):
-            with st.spinner("The local model is analysing the data..."):
+        if st.button("Generate summary", type="primary"):
+            # The LLM runs in a background thread while the loading screen shows the analysis
+            # steps. Every value shown on the screen is a real figure of the current selection.
+            result = {}
+
+            def call_llm():
                 try:
-                    st.session_state["ai_summary"] = (
-                        filter_key, generate_summary(stats, stats["top_comments"]))
-                except Exception as e:
-                    st.error(f"LLM call failed: {e}")
+                    result["text"] = generate_summary(stats, stats["top_comments"])
+                except Exception as e:  # shown in the dashboard below
+                    result["error"] = e
+
+            worker = threading.Thread(target=call_llm, daemon=True)
+            worker.start()
+
+            top_cause = next(iter(stats.get("top_root_causes_pct", {}).items()), None)
+            n_days = (df["Last_Seen"].max() - df["First_Seen"].min()).days + 1
+            steps = [
+                {"text": "Loading planner comments from the daily snapshots",
+                 "value": f"{len(df):,} comments · {n_days} days"},
+                {"text": "Applying filters", "value": f"{selection_name} → {stats['total_comments']:,} comments"},
+                {"text": "Reading translated comments (DE → EN)",
+                 "value": f"{stats.get('german_comments_pct', 0)}% originally in German"},
+                {"text": "Cross-referencing vendors and MRP controllers",
+                 "value": f"{stats.get('vendor_count', 0)} vendors · {stats.get('mrp_controller_count', 0)} MRP controllers"},
+                {"text": "Ranking root causes",
+                 "value": f"top: {top_cause[0]} ({top_cause[1]}%)" if top_cause else "no root cause filled in"},
+                {"text": "Measuring how long issues stay open",
+                 "value": f"median {stats.get('median_days_active', 0):.0f} days · {stats.get('comments_still_open', 0)} still open"},
+                {"text": "Detecting week-by-week trends",
+                 "value": f"{stats.get('comments_first_snapshot', '–')} → {stats.get('comments_last_snapshot', '–')} comments/week"},
+                {"text": "Writing the summary with the local language model", "value": "on-device"},
+            ]
+            sample = (filtered_df["Comment_EN"].dropna().astype(str).str.slice(0, 110)
+                      .sample(min(40, filtered_df["Comment_EN"].notna().sum()), random_state=0).tolist())
+
+            step_ms = 850
+            min_seconds = step_ms * (len(steps) - 1) / 1000 + 0.6  # let the animation reach the last step
+            screen = st.empty()
+            with screen.container():
+                ui.ai_loading_screen(steps, total=stats["total_comments"],
+                                     sub="Statistics computed by pandas · local LLM (LM Studio)",
+                                     comments=sample, step_ms=step_ms)
+            started = time.time()
+            while worker.is_alive() or time.time() - started < min_seconds:
+                time.sleep(0.2)
+            screen.empty()
+
+            if "error" in result:
+                st.error(f"LLM call failed: {result['error']}")
+            else:
+                st.session_state["ai_summary"] = (
+                    filter_key, result["text"], selection_name, stats["total_comments"],
+                    time.strftime("%Y-%m-%d %H:%M"))
 
         saved = st.session_state.get("ai_summary")
         if saved:
             if saved[0] != filter_key:
                 st.caption("⚠️ Summary generated with different filters.")
-            st.write(saved[1])
+            ui.ai_result(saved[1], f"{saved[2]} · based on {saved[3]} comments · generated {saved[4]} "
+                                   f"with a local LLM · figures computed by pandas")
