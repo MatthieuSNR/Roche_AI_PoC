@@ -69,7 +69,7 @@ html, .main, [data-testid="stAppViewContainer"] {{ scroll-behavior: smooth; }}
   display: flex; align-items: center; gap: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.2);
 }}
 .ion-topbar .brand {{ display: flex; align-items: center; gap: 14px; font-size: 1.15rem; font-weight: 600; }}
-.ion-topbar .brand img {{ height: 32px; display: block; }}
+.ion-topbar .brand img {{ height: 30px; width: auto; display: block; }}
 .ion-topbar .hex {{
   border: 2px solid #fff; padding: 1px 10px; font-weight: 700; font-size: .95rem;
   clip-path: polygon(12% 0, 88% 0, 100% 50%, 88% 100%, 12% 100%, 0 50%);

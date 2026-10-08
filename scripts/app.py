@@ -253,8 +253,11 @@ with tab2:
         max_count = root_cause_counts.max()
         colors = [colormap(count / max_count) for count in root_cause_counts.values]
 
+        # Bar chart and pie side by side (Streamlit stacks the columns on a small screen)
+        col_bar, col_pie = st.columns([3, 2], gap="large")
+
         # 4. Plot (horizontal bars: easier to read long root cause names)
-        fig, ax = plt.subplots(figsize=(10, max(4, len(root_cause_counts) * 0.5)))
+        fig, ax = plt.subplots(figsize=(9, max(4.6, len(root_cause_counts) * 0.45)))
         bars = ax.barh(root_cause_counts.index[::-1], root_cause_counts.values[::-1],
                     color=colors[::-1])
         ax.set_title(f"Top {n_causes} Root Causes — {selection_name}")
@@ -265,24 +268,12 @@ with tab2:
             ax.text(bar.get_width() + max_count * 0.01, bar.get_y() + bar.get_height() / 2,
                     f"{count} ({count / total_comments * 100:.1f}%)", va="center")
 
-        st.pyplot(fig)
-        st.caption(f"% = share of the {total_comments} comments of the selection. "
-                   f"{no_cause_count} comments ({no_cause_count / total_comments * 100:.1f}%) have no root cause.")
+        with col_bar:
+            st.pyplot(fig)
+            st.caption(f"% = share of the {total_comments} comments of the selection. "
+                       f"{no_cause_count} comments ({no_cause_count / total_comments * 100:.1f}%) have no root cause.")
 
-        # 5. Compare with all comments: is a root cause over-represented in this selection?
-        if selection_parts:
-            all_total = len(df)
-            compare_df = pd.DataFrame({
-                "Root Cause": root_cause_counts.index,
-                f"% of {selection_name} comments": (root_cause_counts.values / total_comments * 100).round(1),
-                "% of all comments": [round((df["Root_Cause"] == c).sum() / all_total * 100, 1)
-                                      for c in root_cause_counts.index],
-            })
-            compare_df["Difference (pts)"] = (compare_df.iloc[:, 1] - compare_df.iloc[:, 2]).round(1)
-            st.markdown("**Compared with all comments**")
-            st.dataframe(compare_df, use_container_width=True, hide_index=True)
-
-        # 6. Show the percentage share
+        # 5. Show the percentage share
         # Split: top N causes as individual slices, rest grouped as "Other"
         all_cause_counts = filtered_df["Root_Cause"].value_counts()
         top_counts = all_cause_counts.head(n_causes)
@@ -294,20 +285,43 @@ with tab2:
             pie_labels.append("Other")
             pie_values.append(other_count)
 
-        fig_pie, ax_pie = plt.subplots(figsize=(8, 8))
-        ax_pie.pie(
+        # Small pie with a legend (labels on the slices overlap when there are many causes)
+        fig_pie, ax_pie = plt.subplots(figsize=(4, 4.8))
+        palette = plt.cm.tab20.colors if len(top_counts) > 12 else plt.cm.Set3.colors
+        pie_colors = list(palette[:len(top_counts)]) + (["#BDBDBD"] if other_count > 0 else [])  # "Other" in grey
+        wedges, _, _ = ax_pie.pie(
             pie_values,
-            labels=pie_labels,
-            autopct="%1.1f%%",       # Show percentage on each slice
+            autopct=lambda p: f"{p:.1f}%" if p >= 4 else "",  # Show percentage on the large slices
             startangle=90,
-            colors=plt.cm.Set3.colors[:len(pie_values)],  # Distinct colors
+            counterclock=False,
+            colors=pie_colors,  # Distinct colors
+            wedgeprops={"edgecolor": "white", "linewidth": 1},
+            textprops={"fontsize": 8},
         )
-        ax_pie.set_title(f"Root Cause Share — {selection_name}")
-        st.pyplot(fig_pie)
+        ax_pie.set_title(f"Root Cause Share — {selection_name}", fontsize=10)
+        legend_labels = [l if len(l) <= 30 else l[:29] + "…" for l in pie_labels]
+        ax_pie.legend(wedges, legend_labels, loc="upper center", bbox_to_anchor=(0.5, 0.0),
+                      ncol=2, fontsize=7, frameon=False)
+        fig_pie.tight_layout()
 
-        # Keep the caption only for the "Other" context
-        st.caption(f"Pie: share among the comments WITH a root cause. "
-                   f"'Other' = all remaining root causes beyond the Top {n_causes} ({other_count} comments).")
+        with col_pie:
+            st.pyplot(fig_pie, use_container_width=False, dpi=90)  # fixed size (~360 px wide)
+            # Keep the caption only for the "Other" context
+            st.caption(f"Share among the comments WITH a root cause. "
+                       f"'Other' = all remaining root causes beyond the Top {n_causes} ({other_count} comments).")
+
+        # 6. Compare with all comments: is a root cause over-represented in this selection?
+        if selection_parts:
+            all_total = len(df)
+            compare_df = pd.DataFrame({
+                "Root Cause": root_cause_counts.index,
+                f"% of {selection_name} comments": (root_cause_counts.values / total_comments * 100).round(1),
+                "% of all comments": [round((df["Root_Cause"] == c).sum() / all_total * 100, 1)
+                                      for c in root_cause_counts.index],
+            })
+            compare_df["Difference (pts)"] = (compare_df.iloc[:, 1] - compare_df.iloc[:, 2]).round(1)
+            st.markdown("**Compared with all comments**")
+            st.dataframe(compare_df, use_container_width=True, hide_index=True)
 
 
 # ================= SECTION 3: Most Frequent Comments =================
@@ -405,36 +419,48 @@ with tab5:
     if trend_data.empty:
         st.info("No data to display for the current filters.")
     else:
-        # 2. Limit to the top 5 root causes of the filtered data (readable chart)
-        top_5_causes = filtered_df["Root_Cause"].value_counts().head(5).index
-        trend_top5 = trend_data[[c for c in top_5_causes if c in trend_data.columns]]
+        # 2. Root causes to display: the top 5 of the filtered data by default,
+        #    the user can add or remove any root cause of the selection
+        causes_by_frequency = filtered_df["Root_Cause"].value_counts().index.tolist()
+        selected_trend_causes = st.multiselect(
+            "Root causes to display (default: the 5 most frequent):",
+            options=causes_by_frequency,
+            default=causes_by_frequency[:5],
+            key="trend_causes",
+        )
+        trend_selected = trend_data[[c for c in selected_trend_causes if c in trend_data.columns]]
 
-        # 3. Plot: one line per root cause
-        fig, ax = plt.subplots(figsize=(12, 6))
-        for cause in trend_top5.columns:
-            ax.plot(
-                trend_top5.index,
-                trend_top5[cause],
-                marker="o",
-                label=cause,
-            )
-        ax.set_title(f"Root Cause Evolution — {selection_name}")
-        ax.set_xlabel("Week")
-        ax.set_ylabel("Comments visible during the week")
-        ax.legend(title="Root Cause", bbox_to_anchor=(1.02, 1), loc="upper left")
-        plt.xticks(rotation=45)
-        plt.tight_layout()
-        st.pyplot(fig)
+        if trend_selected.empty:
+            st.info("Select at least one root cause to display.")
+        else:
+            # 3. Plot: one line per root cause (20 distinct colours when many are selected)
+            fig, ax = plt.subplots(figsize=(12, 6))
+            line_colors = plt.cm.tab20.colors if len(trend_selected.columns) > 8 else None
+            for i, cause in enumerate(trend_selected.columns):
+                ax.plot(
+                    trend_selected.index,
+                    trend_selected[cause],
+                    marker="o",
+                    label=cause,
+                    color=line_colors[i % 20] if line_colors else None,
+                )
+            ax.set_title(f"Root Cause Evolution — {selection_name}")
+            ax.set_xlabel("Week")
+            ax.set_ylabel("Comments visible during the week")
+            ax.legend(title="Root Cause", bbox_to_anchor=(1.02, 1), loc="upper left")
+            plt.xticks(rotation=45)
+            plt.tight_layout()
+            st.pyplot(fig)
 
-        # 4. Simple numeric insight (computed by pandas, not hallucinated!)
-        ui.panel_header("Key Numbers")
-        if "comments_first_snapshot" in stats:
-            first, last = stats["comments_first_snapshot"], stats["comments_last_snapshot"]
-            st.metric(
-                f"Comments visible (week of {stats['first_snapshot']} → week of {stats['last_snapshot']})",
-                f"{first} → {last}",
-                delta=f"{last - first:+d}",
-            )
+            # 4. Simple numeric insight (computed by pandas, not hallucinated!)
+            ui.panel_header("Key Numbers")
+            if "comments_first_snapshot" in stats:
+                first, last = stats["comments_first_snapshot"], stats["comments_last_snapshot"]
+                st.metric(
+                    f"Comments visible (week of {stats['first_snapshot']} → week of {stats['last_snapshot']})",
+                    f"{first} → {last}",
+                    delta=f"{last - first:+d}",
+                )
 
 
 
