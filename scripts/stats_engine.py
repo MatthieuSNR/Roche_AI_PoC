@@ -69,11 +69,13 @@ def compute_stats(filtered_df: pd.DataFrame, all_df: pd.DataFrame | None = None)
         c: _pct((all_causes == c).sum(), len(all_df)) for c in cause_counts.head(5).index
     }
 
-    # 2. Who writes / is concerned: vendors and MRP controllers (share of the selection)
+    # 2. Who writes / is concerned: vendors, purchasing groups and MRP controllers (share of the selection)
     stats["top_vendors"] = _share_table(filtered_df["VENDOR_NAME"].fillna("Unknown vendor"))
     stats["top_mrp_controllers"] = _share_table(filtered_df["MRP_CONTROLLER"].fillna("Unknown"))
+    stats["top_purchasing_groups"] = _share_table(filtered_df["PURCHASING_GROUP"].fillna("Unknown"))
     stats["vendor_count"] = int(filtered_df["VENDOR_NAME"].nunique())
     stats["mrp_controller_count"] = int(filtered_df["MRP_CONTROLLER"].nunique())
+    stats["purchasing_group_count"] = int(filtered_df["PURCHASING_GROUP"].nunique())
     stats["material_count"] = int(filtered_df["MATERIAL_NUMBER"].nunique())
 
     # 3. Persistence: how long do the comments stay in the dashboard?

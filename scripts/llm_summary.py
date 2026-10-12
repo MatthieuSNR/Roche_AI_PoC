@@ -53,6 +53,7 @@ def build_facts(stats: dict) -> dict:
                                                  if stats.get("share_of_all_comments_pct", 100) < 100 else None),
         "top_vendors_pct_of_comments": {k: v["pct"] for k, v in stats.get("top_vendors", {}).items()},
         "top_mrp_controllers_pct_of_comments": {k: v["pct"] for k, v in stats.get("top_mrp_controllers", {}).items()},
+        "top_purchasing_groups_pct_of_comments": {k: v["pct"] for k, v in stats.get("top_purchasing_groups", {}).items()},
         "comments_still_open_on_last_snapshot": stats.get("comments_still_open"),
         "comments_still_open_pct": stats.get("comments_still_open_pct"),
         "median_days_a_comment_stays_open": stats.get("median_days_active"),
@@ -82,8 +83,8 @@ def build_prompt(stats: dict, sample_comments: list[str]) -> list[dict]:
         "Under each heading, write 2 or 3 bullet points starting with '- '. Each bullet is one or two "
         "full sentences. Explain WHY things happen with the planner comments, not only the numbers: "
         "under 'Key findings' and 'Risks to escalate', quote at least one planner comment word for word "
-        "in double quotes (copy it exactly from the comments below). Under 'Where the issues come from', name the main vendors and MRP "
-        "controllers. Under 'Recommended actions', give concrete next steps for the planners "
+        "in double quotes (copy it exactly from the comments below). Under 'Where the issues come from', name the main vendors, purchasing "
+        "groups and MRP controllers. Under 'Recommended actions', give concrete next steps for the planners "
         "(no new figures). You may write **bold** for key terms.\n"
         "STRICT RULES: only use the numbers provided in the statistics — never compute, estimate, "
         "or invent figures. A key ending in _pct is a percentage; every other number is a count of "

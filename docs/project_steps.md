@@ -25,7 +25,7 @@
 - **Objective**: Create an interactive dashboard to filter and display comments.
 - **Actions**:
   - Load cleaned data (`cleaned_comments.csv`).
-  - Add filters for **vendor, MRP controller, material, root cause and period**.
+  - Add filters for **purchasing group, vendor, MRP controller, material, root cause and period**.
   - Display filtered comments in a table.
   - Comment-centred statistics (`scripts/stats_engine.py`): share of the selection vs all comments,
     root causes per vendor / MRP controller, where a root cause comes from, how long comments stay open.

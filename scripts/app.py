@@ -51,6 +51,7 @@ df["VENDOR_LABEL"] = (
 )
 
 df["MRP_CONTROLLER"] = df["MRP_CONTROLLER"].fillna("Unknown")
+df["PURCHASING_GROUP"] = df["PURCHASING_GROUP"].fillna("Unknown")
 
 # Convert dates to datetime for proper sorting and filtering
 for col in ["Snapshot_Date", "First_Seen", "Last_Seen"]:
@@ -70,11 +71,16 @@ SECTIONS = [
     ("ai-summary", "🤖 AI Summary"),
 ]
 SECTION_TITLES = dict(SECTIONS)
-ui.top_bar("ION Material Availability", "Insights from Planner Comments", SECTIONS)
+ui.top_bar("Material Availability", "Insights from Planner Comments", SECTIONS)
 ui.scroll_spy()  # menu entry of the section on screen in blue
 
 # Filters
 st.sidebar.header("Filters")
+
+
+# Purchasing group filter (organisational responsibility, the first filter of the ION dashboard)
+pgroup_options = ["All"] + sorted(df["PURCHASING_GROUP"].unique().tolist())
+selected_pgroup = st.sidebar.selectbox("Select Purchasing Group:", pgroup_options)
 
 
 # Vendor filter: user can search by name OR account number
@@ -128,6 +134,8 @@ st.sidebar.caption("A comment is in the period if it was visible in the dashboar
 
 # Filter data
 filtered_df = df.copy()
+if selected_pgroup != "All":
+    filtered_df = filtered_df[filtered_df["PURCHASING_GROUP"] == selected_pgroup]
 if selected_vendor_label != "All":
     filtered_df = filtered_df[filtered_df["VENDOR_LABEL"] == selected_vendor_label]
 if selected_mrp != "All":
@@ -154,7 +162,7 @@ elif timeframe_option.startswith("Last"):
 
 
 # Name of the current selection, used in chart titles
-selection_parts = [p for p in [vendor_name_only, selected_mrp, selected_material_label.split(" — ")[0],
+selection_parts = [p for p in [selected_pgroup, vendor_name_only, selected_mrp, selected_material_label.split(" — ")[0],
                                selected_root_cause] if p != "All"]
 selection_name = " / ".join(selection_parts) if selection_parts else "All comments"
 
@@ -195,7 +203,7 @@ with tab1:
     show_original = st.checkbox("Show the original (German) comment next to the translation")
     columns = ["Comment_EN"] + (["Comment"] if show_original else []) + [
         "First_Seen", "Last_Seen", "Days_Active", "STOCKOUT_DATE", "MATERIAL_STATUS",
-        "Root_Cause", "Impact", "VENDOR_NAME", "MRP_CONTROLLER", "MATERIAL_LABEL"]
+        "Root_Cause", "Impact", "VENDOR_NAME", "PURCHASING_GROUP", "MRP_CONTROLLER", "MATERIAL_LABEL"]
     st.dataframe(
         filtered_df.sort_values("Last_Seen", ascending=False)[columns]
         .rename(columns={
@@ -208,6 +216,7 @@ with tab1:
             "MATERIAL_STATUS": "Material Status",
             "Root_Cause": "Root Cause",
             "VENDOR_NAME": "Vendor Name",
+            "PURCHASING_GROUP": "Purchasing Group",
             "MRP_CONTROLLER": "MRP Controller",
             "MATERIAL_LABEL": "Material"
         })
@@ -388,26 +397,29 @@ with tab4:
                    f"of the comments of the selection.")
 
         # Where does this root cause come from? (vendors and MRP controllers)
-        col_v, col_m = st.columns(2)
-        with col_v:
-            st.markdown("**Vendors with this root cause**")
-            st.dataframe(root_cause_sources(filtered_df, selected_cause_for_details, "VENDOR_NAME")
-                         .rename(columns={"VENDOR_NAME": "Vendor"}),
-                         use_container_width=True, hide_index=True)
-        with col_m:
-            st.markdown("**MRP controllers with this root cause**")
-            st.dataframe(root_cause_sources(filtered_df, selected_cause_for_details, "MRP_CONTROLLER")
-                         .rename(columns={"MRP_CONTROLLER": "MRP Controller"}),
-                         use_container_width=True, hide_index=True)
+        # (short column names so that the three tables fit side by side)
+        short_names = {f"% of '{selected_cause_for_details}' comments": "% of this cause",
+                       "% of this entity's comments": "% of its comments"}
+        for column, (by, label) in zip(st.columns(3), [("VENDOR_NAME", "Vendor"),
+                                                        ("PURCHASING_GROUP", "Purchasing Group"),
+                                                        ("MRP_CONTROLLER", "MRP Controller")]):
+            with column:
+                st.markdown(f"**{label}s with this root cause**")
+                st.dataframe(root_cause_sources(filtered_df, selected_cause_for_details, by)
+                             .rename(columns={by: label, **short_names}),
+                             use_container_width=True, hide_index=True)
+        st.caption("% of this cause = share of the comments with this root cause; "
+                   "% of its comments = share of the vendor's (group's, controller's) comments.")
 
         st.markdown("**Comments**")
         st.dataframe(
             details.sort_values("Last_Seen", ascending=False)[
-                ["Comment_EN", "Days_Active", "VENDOR_LABEL", "MRP_CONTROLLER", "MATERIAL_LABEL"]].rename(
+                ["Comment_EN", "Days_Active", "VENDOR_LABEL", "PURCHASING_GROUP", "MRP_CONTROLLER", "MATERIAL_LABEL"]].rename(
                 columns={
                     "Comment_EN": "Comment (EN)",
                     "Days_Active": "Days visible",
                     "VENDOR_LABEL": "Vendor",
+                    "PURCHASING_GROUP": "Purchasing Group",
                     "MRP_CONTROLLER": "MRP Controller",
                     "MATERIAL_LABEL": "Material",
                 }
@@ -495,7 +507,8 @@ with tab6:
 
         with col2:
             st.metric("With a root cause", f"{stats['root_cause_coverage_pct']}%")
-            st.caption(f"Vendors: {stats['vendor_count']} · MRP controllers: {stats['mrp_controller_count']} "
+            st.caption(f"Vendors: {stats['vendor_count']} · Purchasing groups: {stats['purchasing_group_count']} "
+                       f"· MRP controllers: {stats['mrp_controller_count']} "
                        f"· Materials: {stats['material_count']}")
 
         with col3:
@@ -534,17 +547,14 @@ with tab6:
         st.dataframe(cause_df, use_container_width=True, hide_index=True)
 
         # --- Who is concerned: vendors and MRP controllers ---
-        col_v, col_m = st.columns(2)
-        with col_v:
-            st.markdown("**Top Vendors (share of the comments)**")
-            st.dataframe(pd.DataFrame([{"Vendor": k, "Comments": v["comments"], "%": v["pct"]}
-                                       for k, v in stats["top_vendors"].items()]),
-                         use_container_width=True, hide_index=True)
-        with col_m:
-            st.markdown("**Top MRP Controllers (share of the comments)**")
-            st.dataframe(pd.DataFrame([{"MRP Controller": k, "Comments": v["comments"], "%": v["pct"]}
-                                       for k, v in stats["top_mrp_controllers"].items()]),
-                         use_container_width=True, hide_index=True)
+        for column, (key, label) in zip(st.columns(3), [("top_vendors", "Vendor"),
+                                                         ("top_purchasing_groups", "Purchasing Group"),
+                                                         ("top_mrp_controllers", "MRP Controller")]):
+            with column:
+                st.markdown(f"**Top {label}s (share of the comments)**")
+                st.dataframe(pd.DataFrame([{label: k, "Comments": v["comments"], "%": v["pct"]}
+                                           for k, v in stats[key].items()]),
+                             use_container_width=True, hide_index=True)
 
         # --- Rising vs falling causes (the most valuable insight!) ---
         col_a, col_b = st.columns(2)
@@ -580,7 +590,7 @@ with tab7:
     st.caption("Generated locally via LM Studio: no data leaves the machine. "
                "All figures are computed by pandas; the LLM only interprets them.")
 
-    filter_key = (selected_vendor_label, selected_mrp, selected_material_label,
+    filter_key = (selected_pgroup, selected_vendor_label, selected_mrp, selected_material_label,
                   selected_root_cause, timeframe_option)
 
     if stats["total_comments"] == 0:
