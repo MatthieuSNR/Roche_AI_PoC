@@ -53,6 +53,26 @@ df["VENDOR_LABEL"] = (
 df["MRP_CONTROLLER"] = df["MRP_CONTROLLER"].fillna("Unknown")
 df["PURCHASING_GROUP"] = df["PURCHASING_GROUP"].fillna("Unknown")
 
+# Impact filter: the data holds two spellings per level ("Production" and
+# "Production (Stop&Go/...)"), so the filter works on the four official levels
+# (ION: None / Logistics / Production / Market) plus the comments with no impact entered.
+IMPACT_FILTER_OPTIONS = ["Market", "Production", "Logistics", "None (no impact)", "Not assessed"]
+
+
+def impact_level(value):
+    """Map a raw Impact label to one of the filter options."""
+    if pd.isna(value):
+        return "Not assessed"
+    label = str(value).strip().lower()
+    for prefix, level in (("market", "Market"), ("production", "Production"),
+                          ("logistic", "Logistics"), ("none", "None (no impact)")):
+        if label.startswith(prefix):
+            return level
+    return str(value).strip()
+
+
+df["Impact_Level"] = df["Impact"].map(impact_level)
+
 # Convert dates to datetime for proper sorting and filtering
 for col in ["Snapshot_Date", "First_Seen", "Last_Seen"]:
     df[col] = pd.to_datetime(df[col], errors="coerce")
@@ -78,6 +98,14 @@ ui.scroll_spy()  # menu entry of the section on screen in blue
 st.sidebar.header("Filters")
 
 
+# Filters, from top to bottom: MRP controller, purchasing group (organisational
+# responsibility), vendor, material, root cause, impact.
+
+# MRP controller filter
+mrp_options = ["All"] + sorted(df["MRP_CONTROLLER"].unique().tolist())
+selected_mrp = st.sidebar.selectbox("Select MRP Controller:", mrp_options)
+
+
 # Purchasing group filter (organisational responsibility, the first filter of the ION dashboard)
 pgroup_options = ["All"] + sorted(df["PURCHASING_GROUP"].unique().tolist())
 selected_pgroup = st.sidebar.selectbox("Select Purchasing Group:", pgroup_options)
@@ -89,11 +117,6 @@ selected_vendor_label = st.sidebar.selectbox("Select Vendor:", vendor_options)
 vendor_name_only = selected_vendor_label.split(" — ")[0] if selected_vendor_label != "All" else "All"
 
 
-# MRP controller filter
-mrp_options = ["All"] + sorted(df["MRP_CONTROLLER"].unique().tolist())
-selected_mrp = st.sidebar.selectbox("Select MRP Controller:", mrp_options)
-
-
 # Material filter: user can search by number OR description
 material_options = ["All"] + sorted(df["MATERIAL_LABEL"].unique().tolist())
 selected_material_label = st.sidebar.selectbox("Select Material:", material_options)
@@ -103,6 +126,13 @@ selected_material_label = st.sidebar.selectbox("Select Material:", material_opti
 selected_root_cause = st.sidebar.selectbox(
     "Select Root Cause:", ["All"] + sorted(df["Root_Cause"].dropna().unique().tolist())
 )
+
+
+# Impact filter (severity first: Market, Production, Logistics, None, Not assessed)
+impacts_present = set(df["Impact_Level"].unique())
+impact_options = ["All"] + [o for o in IMPACT_FILTER_OPTIONS if o in impacts_present] \
+    + sorted(impacts_present - set(IMPACT_FILTER_OPTIONS))
+selected_impact = st.sidebar.selectbox("Select Impact:", impact_options)
 
 
 
@@ -134,16 +164,18 @@ st.sidebar.caption("A comment is in the period if it was visible in the dashboar
 
 # Filter data
 filtered_df = df.copy()
+if selected_mrp != "All":
+    filtered_df = filtered_df[filtered_df["MRP_CONTROLLER"] == selected_mrp]
 if selected_pgroup != "All":
     filtered_df = filtered_df[filtered_df["PURCHASING_GROUP"] == selected_pgroup]
 if selected_vendor_label != "All":
     filtered_df = filtered_df[filtered_df["VENDOR_LABEL"] == selected_vendor_label]
-if selected_mrp != "All":
-    filtered_df = filtered_df[filtered_df["MRP_CONTROLLER"] == selected_mrp]
 if selected_material_label != "All":
     filtered_df = filtered_df[filtered_df["MATERIAL_LABEL"] == selected_material_label]
 if selected_root_cause != "All":
     filtered_df = filtered_df[filtered_df["Root_Cause"] == selected_root_cause]
+if selected_impact != "All":
+    filtered_df = filtered_df[filtered_df["Impact_Level"] == selected_impact]
 
 # --- Timeframe filter (Part B: apply the choice to filtered_df) ---
 # A comment stays visible for many days: keep it if [First_Seen, Last_Seen] overlaps the period
@@ -162,8 +194,8 @@ elif timeframe_option.startswith("Last"):
 
 
 # Name of the current selection, used in chart titles
-selection_parts = [p for p in [selected_pgroup, vendor_name_only, selected_mrp, selected_material_label.split(" — ")[0],
-                               selected_root_cause] if p != "All"]
+selection_parts = [p for p in [selected_mrp, selected_pgroup, vendor_name_only, selected_material_label.split(" — ")[0],
+                               selected_root_cause, selected_impact] if p != "All"]
 selection_name = " / ".join(selection_parts) if selection_parts else "All comments"
 
 # Compute all statistics ONCE (used by all sections and the AI Summary)
@@ -590,8 +622,8 @@ with tab7:
     st.caption("Generated locally via LM Studio: no data leaves the machine. "
                "All figures are computed by pandas; the LLM only interprets them.")
 
-    filter_key = (selected_pgroup, selected_vendor_label, selected_mrp, selected_material_label,
-                  selected_root_cause, timeframe_option)
+    filter_key = (selected_mrp, selected_pgroup, selected_vendor_label, selected_material_label,
+                  selected_root_cause, selected_impact, timeframe_option)
 
     if stats["total_comments"] == 0:
         st.info("No comments match the current filters.")
