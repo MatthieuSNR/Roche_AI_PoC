@@ -149,7 +149,13 @@ Each choice is grounded in **technical requirements, academic standards, and ind
  | Local LLM (LM Studio) | Possible, but **slower** and less consistent than a dedicated translation engine. |
 
 ### **Data Governance**
-DeepL is a **cloud service**: only the comment text is sent (no vendor, material or quantity). This is a limit to discuss with Roche; the local alternatives above remain possible.
+DeepL is a **cloud service**: only the comment text is sent (no vendor, material or quantity column). Before sending, the text is **pseudonymised** (`scripts/pseudonymise.py`): e-mail addresses, @-mentions, supplier names, material numbers, long numbers (PO, batch) and the company name are replaced by placeholders, which DeepL copies unchanged; the original values are restored locally after translation.
+
+**Residual limits** (thesis, 3.8):
+- Supplier names written in an **abbreviated or misspelled** form, and supplier names shorter than 4 characters, are not detected.
+- **Person names** written without "@" or e-mail address (e.g., "laut Hr. Müller") are not detected.
+- The **rest of the comment** (delays, quantities, problem descriptions) is still sent to a cloud service; pseudonymisation reduces, but does not remove, the governance question. The local alternatives above remain possible.
+- The placeholder pattern relies on DeepL respecting the ignored tags; a placeholder that is altered would not be restored (checked by `tests/test_pseudonymise.py` for the local part only).
 
 ### **References**
 - [DeepL API Documentation](https://developers.deepl.com/docs)
