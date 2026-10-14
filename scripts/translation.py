@@ -7,6 +7,10 @@ Translation: adds comment_language and Comment_EN to data/cleaned_comments.csv.
 * Translation: DeepL, German comments only. Every translation is stored in
   data/interim/translation_cache.csv, so a text is paid for once, even if the script
   is interrupted or re-run after a new data build.
+* Pseudonymisation: before a text is sent to DeepL, e-mail addresses, supplier names,
+  material numbers, long numbers (PO, batch) and the company name are replaced by
+  placeholders (scripts/pseudonymise.py). The originals are put back locally after
+  translation, so they never leave this machine.
 
 Usage (from the project root):  python scripts/translation.py            (translates)
                                 python scripts/translation.py --dry-run  (counts only)
@@ -19,6 +23,8 @@ import time
 
 import pandas as pd
 from langdetect import DetectorFactory, detect_langs
+
+from pseudonymise import build_patterns, pseudonymise, report, restore, vendor_names
 
 project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COMMENTS_PATH = os.path.join(project_dir, "data", "cleaned_comments.csv")
@@ -76,24 +82,29 @@ def save_cache(cache):
     pd.DataFrame({"source_text": list(cache), "translation": list(cache.values())}).to_csv(CACHE_PATH, index=False)
 
 
-def translate_missing(texts, cache, batch_size=50):
-    """Translate with DeepL the texts not in the cache; checkpoint after every batch."""
+def translate_missing(texts, cache, patterns, batch_size=50):
+    """Translate with DeepL the texts not in the cache; checkpoint after every batch.
+    Only the pseudonymised version of each text is sent; the cache keeps the original."""
     import deepl
     from config import DEEPL_API_KEY
 
     translator = deepl.Translator(DEEPL_API_KEY)
     for start in range(0, len(texts), batch_size):
         batch = texts[start:start + batch_size]
+        safe = [pseudonymise(t, patterns) for t in batch]  # [(text with placeholders, mapping)]
         for attempt in range(3):
             try:
-                results = translator.translate_text(batch, source_lang="DE", target_lang="EN-US")
+                results = translator.translate_text(
+                    [t for t, _ in safe], source_lang="DE", target_lang="EN-US",
+                    tag_handling="xml", ignore_tags=["keep"],
+                )
                 break
             except deepl.TooManyRequestsException:
                 print("Rate limit reached, waiting...")
                 time.sleep(5 * (attempt + 1))
         else:
             raise RuntimeError("DeepL rate limit: try again later (progress is saved).")
-        cache.update(zip(batch, [r.text for r in results]))
+        cache.update(zip(batch, [restore(r.text, m) for r, (_, m) in zip(results, safe)]))
         save_cache(cache)
         print(f"  translated {min(start + batch_size, len(texts))}/{len(texts)}")
     usage = translator.get_usage().character
@@ -111,8 +122,12 @@ def add_translations(df, dry_run=False):
     print(f"German comments: {len(texts)} distinct texts | already translated: {len(texts) - len(todo)} "
           f"| to translate: {len(todo)} ({sum(map(len, todo))} characters)")
 
+    patterns = build_patterns(vendor_names(df["VENDOR_NAME"]), df["MATERIAL_NUMBER"].dropna().astype(str).tolist())
+    if todo:
+        counts = report(todo, patterns)
+        print("Pseudonymised before sending (number of texts):", counts.to_dict() if len(counts) else "nothing")
     if todo and not dry_run:
-        translate_missing(todo, cache)
+        translate_missing(todo, cache, patterns)
     save_cache(cache)
 
     df["Comment_EN"] = df["Comment"]
