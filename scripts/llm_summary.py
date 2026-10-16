@@ -15,13 +15,20 @@ is streamed (stream_summary) so the dashboard can show it word by word.
 
 
 import json
+import os
 import re
 import pandas as pd
 from openai import OpenAI
 
+import config  # noqa: F401  (loads the .env file: MISTRAL_API_KEY)
+
 # LM Studio local server — no data leaves the machine
 LM_STUDIO_BASE_URL = "http://127.0.0.1:1234/v1"
 MODEL_NAME = "mistralai/mistral-7b-instruct-v0.3"
+# Cloud: Mistral API (OpenAI-compatible). Same family of models as the local one, but hosted
+# by Mistral AI. The key is read from .env or, once deployed, from the Streamlit secrets.
+MISTRAL_BASE_URL = os.getenv("MISTRAL_BASE_URL", "https://api.mistral.ai/v1")
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-latest")  # check the model list of La Plateforme
 MAX_TOKENS = 750   # structured analysis of 250-350 words (~450 tokens), with a margin
 SECTIONS = ["Key findings", "Trend over time", "Where the issues come from",
             "Risks to escalate", "Recommended actions"]
@@ -66,10 +73,12 @@ def build_facts(stats: dict) -> dict:
         "material_status_number_of_comments": stats.get("material_status_counts"),
         "impact_number_of_comments": stats.get("impact_counts"),
     }
-    return {k: v for k, v in facts.items() if v not in (None, {}, [], "None to None")}
+    # explicit test: "v not in (None, {}, [])" raises an error when v is a numpy number
+    return {k: v for k, v in facts.items()
+            if v is not None and not (isinstance(v, (dict, list, str)) and (not v or v == "None to None"))}
 
 
-def build_prompt(stats: dict, sample_comments: list[str]) -> list[dict]:
+def build_prompt(stats: dict, sample_comments: list[str], pseudonymised: bool = False) -> list[dict]:
     """Build the chat message. NOTE: mistral-7b-instruct-v0.3 does not
     support the 'system' role, so instructions are merged into the user message."""
     headings = "\n".join(f"### {h}" for h in SECTIONS)
@@ -88,8 +97,15 @@ def build_prompt(stats: dict, sample_comments: list[str]) -> list[dict]:
         "(no new figures). You may write **bold** for key terms.\n"
         "STRICT RULES: only use the numbers provided in the statistics — never compute, estimate, "
         "or invent figures. A key ending in _pct is a percentage; every other number is a count of "
-        "comments, never a percentage. Write nothing before the first heading.\n\n"
+        "comments, never a percentage. Write nothing before the first heading.\n"
     )
+    if pseudonymised:
+        instructions += (
+            "Names are replaced by pseudonyms such as VENDOR_1, MRP_2, PGROUP_3 or MATERIAL_4. Use them "
+            "exactly as written (same spelling, never translate or describe them) and never try to "
+            "guess the real names.\n"
+        )
+    instructions += "\n"
 
     evidence = "\n".join(
         f"[{cause}]\n" + "\n".join(f"- {c}" for c in comments)
@@ -123,6 +139,30 @@ def stream_summary(stats: dict, sample_comments: list[str]):
     for chunk in stream:
         if chunk.choices and chunk.choices[0].delta.content:
             yield chunk.choices[0].delta.content
+
+
+def get_cloud_client() -> OpenAI:
+    """OpenAI-compatible client for the Mistral API (key from MISTRAL_API_KEY)."""
+    return OpenAI(base_url=MISTRAL_BASE_URL, api_key=os.getenv("MISTRAL_API_KEY", ""), timeout=120.0)
+
+
+def is_cloud_configured() -> bool:
+    """True when an API key is available (the key itself is never displayed)."""
+    return bool(os.getenv("MISTRAL_API_KEY", "").strip())
+
+
+def stream_summary_cloud(stats: dict, sample_comments: list[str], pseudonymiser=None):
+    """Same analysis as stream_summary, written by the Mistral API.
+
+    With a PromptPseudonymiser the request contains aliases (VENDOR_1, MRP_2...) instead of
+    names; the aliases of the answer are replaced by the original names before they are yielded."""
+    if pseudonymiser is not None:
+        stats, sample_comments = pseudonymiser.apply(stats), pseudonymiser.apply(sample_comments)
+    messages = build_prompt(stats, sample_comments, pseudonymised=pseudonymiser is not None)
+    stream = get_cloud_client().chat.completions.create(
+        model=MISTRAL_MODEL, messages=messages, temperature=0.2, max_tokens=MAX_TOKENS, stream=True)
+    pieces = (c.choices[0].delta.content for c in stream if c.choices and c.choices[0].delta.content)
+    yield from (pseudonymiser.stream_restored(pieces) if pseudonymiser is not None else pieces)
 
 
 def tidy(text: str) -> str:

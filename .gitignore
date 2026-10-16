@@ -36,3 +36,6 @@ __pycache__/
 
 # --- Roche logo (trademark, kept local) ---
 #assets/
+
+# Streamlit secrets (API keys of the deployed app)
+.streamlit/secrets.toml

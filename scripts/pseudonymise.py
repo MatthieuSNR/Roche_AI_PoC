@@ -104,3 +104,119 @@ def report(texts: list[str], patterns) -> pd.Series:
         for label in {k.split("_")[0] for k in pseudonymise(t, patterns)[1]}:
             counts[label] = counts.get(label, 0) + 1
     return pd.Series(counts, dtype=int).sort_values(ascending=False)
+
+
+# ======================================================================================
+# Pseudonymisation of the PROMPT sent to a cloud LLM (Mistral API)
+# ======================================================================================
+# The prompt only contains aggregated statistics (shares, counts, trends: no price, no
+# volume) and a few planner comments. Even so, identifying elements are replaced by
+# aliases before the request leaves the machine, as an additional safeguard:
+#
+# * supplier names (statistics and comments)   -> VENDOR_n
+# * MRP controllers (statistics)               -> MRP_n
+# * purchasing groups (statistics)             -> PGROUP_n
+# * material numbers                           -> MATERIAL_n
+# * e-mails, @-mentions, long numbers, "Roche" in the comments -> EMAIL_n, PERSON_n, ID_n, COMPANY_n
+#
+# The alias -> original table stays in memory on this machine; the aliases that the model
+# writes in its answer are replaced by the original values before display (restore_text).
+# Limits (thesis 3.8): same as for DeepL (names in abbreviated or misspelled form, persons
+# without "@"). MRP controllers and purchasing groups are short codes: they are replaced
+# in the statistics (exact values) but not searched inside the free-text comments.
+
+ALIAS_LABELS = ("VENDOR", "MRP", "PGROUP", "MATERIAL", "EMAIL", "PERSON", "ID", "COMPANY")
+ALIAS = re.compile(r"(?<![A-Za-z0-9_])((?:" + "|".join(ALIAS_LABELS) + r")_\d+)(?!\d)")
+NOT_AN_ENTITY = {"Unknown", "Unknown vendor", "None", ""}
+
+
+def _vendor_key(name: str) -> str:
+    """Normalised supplier name: 'ACME Medical GmbH' and 'Acme Medical' share one alias."""
+    short = re.sub(r"\s+", " ", name).strip()
+    while LEGAL_SUFFIX.search(short):
+        short = LEGAL_SUFFIX.sub("", short).strip()
+    return short.lower()
+
+
+class PromptPseudonymiser:
+    """Reversible aliases for one request to a cloud LLM.
+
+    >>> p = PromptPseudonymiser(df)            # df: the loaded comments table
+    >>> safe_stats = p.apply(stats)            # same structure, aliases instead of names
+    >>> p.restore_text(answer)                 # aliases -> original names
+    """
+
+    def __init__(self, df: pd.DataFrame):
+        self.reverse: dict[str, str] = {}       # alias -> original value
+        self._forward: dict[tuple, str] = {}    # (label, key) -> alias
+        self._counters: dict[str, int] = {}
+        self._exact: dict[str, str] = {}        # exact value -> label (statistics keys and values)
+
+        vendors = df["VENDOR_NAME"].dropna().astype(str).unique() if "VENDOR_NAME" in df else []
+        for label, column in (("MRP", "MRP_CONTROLLER"), ("PGROUP", "PURCHASING_GROUP"),
+                              ("MATERIAL", "MATERIAL_NUMBER")):
+            if column in df:
+                for v in df[column].dropna().astype(str).unique():
+                    if v.strip() not in NOT_AN_ENTITY:
+                        self._exact[v.strip()] = label
+        for v in vendors:
+            if v.strip() not in NOT_AN_ENTITY:
+                self._exact[v.strip()] = "VENDOR"
+
+        materials = df["MATERIAL_NUMBER"].dropna().astype(str).tolist() if "MATERIAL_NUMBER" in df else []
+        self._patterns = build_patterns(vendor_names(pd.Series(list(vendors), dtype=str)), materials)
+
+    def fresh(self) -> "PromptPseudonymiser":
+        """New pseudonymiser for one request: same entity lists (expensive to build), empty aliases."""
+        other = object.__new__(PromptPseudonymiser)
+        other.reverse, other._forward, other._counters = {}, {}, {}
+        other._exact, other._patterns = self._exact, self._patterns
+        return other
+
+    def _alias(self, label: str, original: str, key: str | None = None) -> str:
+        key = (label, key if key is not None else original)
+        if key not in self._forward:
+            self._counters[label] = self._counters.get(label, 0) + 1
+            alias = f"{label}_{self._counters[label]}"
+            self._forward[key] = alias
+            self.reverse[alias] = original
+        return self._forward[key]
+
+    def _text(self, text: str) -> str:
+        stripped = text.strip()
+        if stripped in self._exact:  # statistics keys/values: whole string is an entity
+            label = self._exact[stripped]
+            return self._alias(label, stripped, _vendor_key(stripped) if label == "VENDOR" else None)
+        for label, pattern in self._patterns:  # free text (comments)
+            def sub(match, label=label):
+                value = match.group(0)
+                return self._alias(label, value, _vendor_key(value) if label == "VENDOR" else None)
+            text = pattern.sub(sub, text)
+        return text
+
+    def apply(self, obj):
+        """Return a copy of obj (dict / list / str) with every identifying string aliased."""
+        if isinstance(obj, dict):
+            return {(self._text(k) if isinstance(k, str) else k): self.apply(v) for k, v in obj.items()}
+        if isinstance(obj, (list, tuple)):
+            return [self.apply(v) for v in obj]
+        if isinstance(obj, str):
+            return self._text(obj)
+        return obj
+
+    def restore_text(self, text: str) -> str:
+        """Replace the aliases written by the model by the original values."""
+        return ALIAS.sub(lambda m: self.reverse.get(m.group(1), m.group(1)), text)
+
+    def stream_restored(self, pieces):
+        """Restore aliases in a stream of text pieces. The last (possibly unfinished) word is
+        held back until its end is known, so that 'VENDOR_1' is never shown as half an alias."""
+        buffer = ""
+        for piece in pieces:
+            buffer += piece
+            cut = max(buffer.rfind(" "), buffer.rfind("\n")) + 1
+            if cut:
+                yield self.restore_text(buffer[:cut])
+                buffer = buffer[cut:]
+        if buffer:
+            yield self.restore_text(buffer)
