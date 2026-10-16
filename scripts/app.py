@@ -3,6 +3,7 @@ import pandas as pd
 import matplotlib.pyplot as plt
 import matplotlib.colors as mcolors
 import numpy as np
+import json
 import os
 import sys
 import threading
@@ -113,6 +114,70 @@ SECTION_TITLES = dict(SECTIONS)
 ui.top_bar("Material Availability", "Insights from Planner Comments", SECTIONS)
 ui.scroll_spy()  # menu entry of the section on screen in blue
 
+# --- Saved views (like SAP "personalised views"): filters + table columns under a name ---
+# Stored on this Mac (data/interim, not pushed to GitHub), so every user of the shared app sees them.
+VIEWS_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                          "data", "interim", "saved_views.json")
+FILTER_KEYS = ["f_mrp", "f_pgroup", "f_vendor", "f_material", "f_root_cause", "f_impact"]
+TABLE_COLUMNS = {  # data column -> displayed name, in the default order of the comments table
+    "Comment_EN": "Comment (EN)", "Comment": "Original comment", "First_Seen": "First seen",
+    "Last_Seen": "Last seen", "Days_Active": "Days visible", "STOCKOUT_DATE": "Stockout Date",
+    "MATERIAL_STATUS": "Material Status", "Root_Cause": "Root Cause", "Impact": "Impact",
+    "VENDOR_NAME": "Vendor Name", "PURCHASING_GROUP": "Purchasing Group",
+    "MRP_CONTROLLER": "MRP Controller", "MATERIAL_LABEL": "Material"}
+DEFAULT_COLUMNS = [c for c in TABLE_COLUMNS.values() if c != "Original comment"]
+
+
+def load_views():
+    try:
+        with open(VIEWS_PATH) as f:
+            return json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return {}
+
+
+def apply_view():
+    """Callback of the view selector: puts the saved values into the widgets before they are drawn."""
+    view = load_views().get(st.session_state["view_name"])
+    if view:
+        for key in FILTER_KEYS + ["table_columns"]:
+            st.session_state[key] = view.get(key, [])
+        st.session_state["timeframe"] = view.get("timeframe", "All snapshots")
+
+
+def save_view():
+    name = st.session_state["new_view_name"].strip()
+    if name:
+        views = load_views()
+        views[name] = {key: st.session_state.get(key, []) for key in FILTER_KEYS + ["table_columns"]}
+        views[name]["timeframe"] = st.session_state.get("timeframe", "All snapshots")
+        os.makedirs(os.path.dirname(VIEWS_PATH), exist_ok=True)
+        with open(VIEWS_PATH, "w") as f:
+            json.dump(views, f, indent=2, ensure_ascii=False)
+        st.session_state["view_name"] = name
+        st.session_state["new_view_name"] = ""
+
+
+def delete_view():
+    views = load_views()
+    views.pop(st.session_state["view_name"], None)
+    with open(VIEWS_PATH, "w") as f:
+        json.dump(views, f, indent=2, ensure_ascii=False)
+    st.session_state["view_name"] = "—"
+
+
+st.sidebar.header("Views")
+st.session_state.setdefault("table_columns", DEFAULT_COLUMNS)
+view_names = sorted(load_views())
+st.sidebar.selectbox("Saved view:", ["—"] + view_names, key="view_name", on_change=apply_view,
+                     help="Applies the saved filters and table columns.")
+if st.session_state.get("view_name", "—") != "—":
+    st.sidebar.button("Delete this view", on_click=delete_view)
+with st.sidebar.expander("Save the current view"):
+    st.text_input("Name (e.g. 'E28 + backups'):", key="new_view_name")
+    st.button("Save", on_click=save_view)
+
+
 # Filters
 st.sidebar.header("Filters")
 
@@ -120,37 +185,34 @@ st.sidebar.header("Filters")
 # Filters, from top to bottom: MRP controller, purchasing group (organisational
 # responsibility), vendor, material, root cause, impact.
 # Every filter accepts several values (e.g. an MRP controller and the colleagues they back up);
-# an empty filter means "All".
-
-def multi_filter(label, options):
-    return st.sidebar.multiselect(label, options, placeholder="All")
-
-
-# MRP controller filter
-selected_mrp = multi_filter("Select MRP Controller:", sorted(df["MRP_CONTROLLER"].unique().tolist()))
+# an empty filter means "All". The filters cascade: each one only offers the values that exist
+# within the filters above it (e.g. only the vendors of the selected MRP controllers).
+cascade_df = df
 
 
-# Purchasing group filter (organisational responsibility, the first filter of the ION dashboard)
-selected_pgroup = multi_filter("Select Purchasing Group:", sorted(df["PURCHASING_GROUP"].unique().tolist()))
+def multi_filter(label, column, key, order=None):
+    global cascade_df
+    available = set(cascade_df[column].dropna().unique())
+    selected = [v for v in st.session_state.get(key, []) if v in set(df[column].dropna())]
+    st.session_state[key] = selected  # drops values of a saved view that no longer exist
+    options = sorted(available | set(selected), key=order) if order else sorted(available | set(selected))
+    selected = st.sidebar.multiselect(label, options, key=key, placeholder="All")
+    if selected:
+        cascade_df = cascade_df[cascade_df[column].isin(selected)]
+    return selected
 
 
-# Vendor filter: user can search by name OR account number
-selected_vendor_label = multi_filter("Select Vendor:", sorted(df["VENDOR_LABEL"].unique().tolist()))
+# Impact filter order: severity first (Market, Production, Logistics, None, Not assessed)
+def impact_order(value):
+    return (IMPACT_FILTER_OPTIONS.index(value), "") if value in IMPACT_FILTER_OPTIONS else (len(IMPACT_FILTER_OPTIONS), value)
 
 
-# Material filter: user can search by number OR description
-selected_material_label = multi_filter("Select Material:", sorted(df["MATERIAL_LABEL"].unique().tolist()))
-
-
-# Root cause filter: user can select from the unique root causes
-selected_root_cause = multi_filter("Select Root Cause:", sorted(df["Root_Cause"].dropna().unique().tolist()))
-
-
-# Impact filter (severity first: Market, Production, Logistics, None, Not assessed)
-impacts_present = set(df["Impact_Level"].unique())
-impact_options = [o for o in IMPACT_FILTER_OPTIONS if o in impacts_present] \
-    + sorted(impacts_present - set(IMPACT_FILTER_OPTIONS))
-selected_impact = multi_filter("Select Impact:", impact_options)
+selected_mrp = multi_filter("Select MRP Controller:", "MRP_CONTROLLER", "f_mrp")
+selected_pgroup = multi_filter("Select Purchasing Group:", "PURCHASING_GROUP", "f_pgroup")
+selected_vendor_label = multi_filter("Select Vendor:", "VENDOR_LABEL", "f_vendor")       # name or account number
+selected_material_label = multi_filter("Select Material:", "MATERIAL_LABEL", "f_material")  # number or description
+selected_root_cause = multi_filter("Select Root Cause:", "Root_Cause", "f_root_cause")
+selected_impact = multi_filter("Select Impact:", "Impact_Level", "f_impact", order=impact_order)
 
 
 
@@ -160,6 +222,7 @@ st.sidebar.subheader("Timeframe")
 timeframe_option = st.sidebar.selectbox(
     "Select period:",
     ["All snapshots", "Last 4 weeks", "Last 8 weeks", "Last 16 weeks", "Custom period"],
+    key="timeframe",
 )
 
 # If "Custom period" is selected, show a date range picker
@@ -250,39 +313,26 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = [st.container() for _ in range(7)]
 
 with tab1:
     ui.section("filtered-comments", SECTION_TITLES["filtered-comments"])
-    show_original = st.checkbox("Show the original (German) comment next to the translation")
-    columns = ["Comment_EN"] + (["Comment"] if show_original else []) + [
-        "First_Seen", "Last_Seen", "Days_Active", "STOCKOUT_DATE", "MATERIAL_STATUS",
-        "Root_Cause", "Impact", "VENDOR_NAME", "PURCHASING_GROUP", "MRP_CONTROLLER", "MATERIAL_LABEL"]
+    shown = st.multiselect(
+        "Columns (in display order: remove a column and add it again to move it to the end):",
+        list(TABLE_COLUMNS.values()), key="table_columns")
+    shown = shown or DEFAULT_COLUMNS
+    to_data = {v: k for k, v in TABLE_COLUMNS.items()}
+    table_df = filtered_df.sort_values("Last_Seen", ascending=False)[[to_data[c] for c in shown]] \
+        .rename(columns=TABLE_COLUMNS)
+    for date_col in ["First seen", "Last seen", "Stockout Date"]:
+        if date_col in table_df:
+            table_df[date_col] = pd.to_datetime(table_df[date_col], errors="coerce").dt.strftime("%Y-%m-%d")
     st.dataframe(
-        filtered_df.sort_values("Last_Seen", ascending=False)[columns]
-        .rename(columns={
-            "Comment_EN": "Comment (EN)",
-            "Comment": "Original comment",
-            "First_Seen": "First seen",
-            "Last_Seen": "Last seen",
-            "Days_Active": "Days visible",
-            "STOCKOUT_DATE": "Stockout Date",
-            "MATERIAL_STATUS": "Material Status",
-            "Root_Cause": "Root Cause",
-            "VENDOR_NAME": "Vendor Name",
-            "PURCHASING_GROUP": "Purchasing Group",
-            "MRP_CONTROLLER": "MRP Controller",
-            "MATERIAL_LABEL": "Material"
-        })
-
-        .assign(**{"First seen": lambda d: d["First seen"].dt.strftime("%Y-%m-%d"),
-                   "Last seen": lambda d: d["Last seen"].dt.strftime("%Y-%m-%d"),
-                   "Stockout Date": lambda d: pd.to_datetime(d["Stockout Date"], errors="coerce").dt.strftime("%Y-%m-%d")}),
-
+        table_df,
         use_container_width=True,
         height=500,
-    column_config={
-        "Comment (EN)": st.column_config.TextColumn(width="large"),
-        "Original comment": st.column_config.TextColumn(width="large"),
-    },
-    hide_index=True,
-        )
+        column_config={
+            "Comment (EN)": st.column_config.TextColumn(width="large"),
+            "Original comment": st.column_config.TextColumn(width="large"),
+        },
+        hide_index=True,
+    )
     st.caption("One row = one comment on one material of one vendor. "
                "'Days visible' = for how many days the comment stayed in the dashboard.")
 

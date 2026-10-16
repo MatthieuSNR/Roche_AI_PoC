@@ -235,7 +235,8 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
  | **Academic Use**      | Increasingly used in **research** for sharing interactive results (e.g., [arXiv](https://arxiv.org/)).                                                                                                         |
 
 ### **Key Features Used in the Project**
-- **Widgets**: Sidebar filters (MRP controller, purchasing group, vendor, material, root cause, impact, period); every filter is a **multiselect** (empty = All), so a planner can view their own scope plus the colleagues they back up (user feedback, demo of 16 Oct.).
+- **Widgets**: Sidebar filters (MRP controller, purchasing group, vendor, material, root cause, impact, period); every filter is a **multiselect** (empty = All), so a planner can view their own scope plus the colleagues they back up (user feedback, demo of 16 Oct.). The filters **cascade**: each one only offers the values that exist within the filters above it (e.g. only the vendors of the selected MRP controllers).
+- **Saved views** (like SAP *personalised views*): the current filters, period and table columns can be saved under a name and re-applied in one click by any user (stored on the Mac in `data/interim/saved_views.json`, not pushed to GitHub). The columns of the comments table can be hidden or reordered (Streamlit 1.32 has no built-in column menu, so a multiselect sets the columns and their order).
 - **One scrolling page**: an overview (ION material status tiles) followed by 7 analysis sections (comments, root causes, frequent comments, root cause details, trends, statistics, AI summary), with a menu that stays at the top of the page to jump to a section.
 - **DataFrames**: Display cleaned data and results.
 - **Plots**: Render matplotlib/seaborn visualizations.
