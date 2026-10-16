@@ -119,39 +119,38 @@ st.sidebar.header("Filters")
 
 # Filters, from top to bottom: MRP controller, purchasing group (organisational
 # responsibility), vendor, material, root cause, impact.
+# Every filter accepts several values (e.g. an MRP controller and the colleagues they back up);
+# an empty filter means "All".
+
+def multi_filter(label, options):
+    return st.sidebar.multiselect(label, options, placeholder="All")
+
 
 # MRP controller filter
-mrp_options = ["All"] + sorted(df["MRP_CONTROLLER"].unique().tolist())
-selected_mrp = st.sidebar.selectbox("Select MRP Controller:", mrp_options)
+selected_mrp = multi_filter("Select MRP Controller:", sorted(df["MRP_CONTROLLER"].unique().tolist()))
 
 
 # Purchasing group filter (organisational responsibility, the first filter of the ION dashboard)
-pgroup_options = ["All"] + sorted(df["PURCHASING_GROUP"].unique().tolist())
-selected_pgroup = st.sidebar.selectbox("Select Purchasing Group:", pgroup_options)
+selected_pgroup = multi_filter("Select Purchasing Group:", sorted(df["PURCHASING_GROUP"].unique().tolist()))
 
 
 # Vendor filter: user can search by name OR account number
-vendor_options = ["All"] + sorted(df["VENDOR_LABEL"].unique().tolist())
-selected_vendor_label = st.sidebar.selectbox("Select Vendor:", vendor_options)
-vendor_name_only = selected_vendor_label.split(" — ")[0] if selected_vendor_label != "All" else "All"
+selected_vendor_label = multi_filter("Select Vendor:", sorted(df["VENDOR_LABEL"].unique().tolist()))
 
 
 # Material filter: user can search by number OR description
-material_options = ["All"] + sorted(df["MATERIAL_LABEL"].unique().tolist())
-selected_material_label = st.sidebar.selectbox("Select Material:", material_options)
+selected_material_label = multi_filter("Select Material:", sorted(df["MATERIAL_LABEL"].unique().tolist()))
 
 
 # Root cause filter: user can select from the unique root causes
-selected_root_cause = st.sidebar.selectbox(
-    "Select Root Cause:", ["All"] + sorted(df["Root_Cause"].dropna().unique().tolist())
-)
+selected_root_cause = multi_filter("Select Root Cause:", sorted(df["Root_Cause"].dropna().unique().tolist()))
 
 
 # Impact filter (severity first: Market, Production, Logistics, None, Not assessed)
 impacts_present = set(df["Impact_Level"].unique())
-impact_options = ["All"] + [o for o in IMPACT_FILTER_OPTIONS if o in impacts_present] \
+impact_options = [o for o in IMPACT_FILTER_OPTIONS if o in impacts_present] \
     + sorted(impacts_present - set(IMPACT_FILTER_OPTIONS))
-selected_impact = st.sidebar.selectbox("Select Impact:", impact_options)
+selected_impact = multi_filter("Select Impact:", impact_options)
 
 
 
@@ -183,18 +182,11 @@ st.sidebar.caption("A comment is in the period if it was visible in the dashboar
 
 # Filter data
 filtered_df = df.copy()
-if selected_mrp != "All":
-    filtered_df = filtered_df[filtered_df["MRP_CONTROLLER"] == selected_mrp]
-if selected_pgroup != "All":
-    filtered_df = filtered_df[filtered_df["PURCHASING_GROUP"] == selected_pgroup]
-if selected_vendor_label != "All":
-    filtered_df = filtered_df[filtered_df["VENDOR_LABEL"] == selected_vendor_label]
-if selected_material_label != "All":
-    filtered_df = filtered_df[filtered_df["MATERIAL_LABEL"] == selected_material_label]
-if selected_root_cause != "All":
-    filtered_df = filtered_df[filtered_df["Root_Cause"] == selected_root_cause]
-if selected_impact != "All":
-    filtered_df = filtered_df[filtered_df["Impact_Level"] == selected_impact]
+for column, selected in [("MRP_CONTROLLER", selected_mrp), ("PURCHASING_GROUP", selected_pgroup),
+                         ("VENDOR_LABEL", selected_vendor_label), ("MATERIAL_LABEL", selected_material_label),
+                         ("Root_Cause", selected_root_cause), ("Impact_Level", selected_impact)]:
+    if selected:
+        filtered_df = filtered_df[filtered_df[column].isin(selected)]
 
 # --- Timeframe filter (Part B: apply the choice to filtered_df) ---
 # A comment stays visible for many days: keep it if [First_Seen, Last_Seen] overlaps the period
@@ -213,8 +205,15 @@ elif timeframe_option.startswith("Last"):
 
 
 # Name of the current selection, used in chart titles
-selection_parts = [p for p in [selected_mrp, selected_pgroup, vendor_name_only, selected_material_label.split(" — ")[0],
-                               selected_root_cause, selected_impact] if p != "All"]
+def selection_label(values, short=False):
+    """Chart-title label of one filter: the value, or "first value +N" when several are selected."""
+    names = [v.split(" — ")[0] for v in values] if short else list(values)
+    return names[0] if len(names) == 1 else f"{names[0]} +{len(names) - 1}" if names else None
+
+selection_parts = [p for p in [selection_label(selected_mrp), selection_label(selected_pgroup),
+                               selection_label(selected_vendor_label, short=True),
+                               selection_label(selected_material_label, short=True),
+                               selection_label(selected_root_cause), selection_label(selected_impact)] if p]
 selection_name = " / ".join(selection_parts) if selection_parts else "All comments"
 
 # Compute all statistics ONCE (used by all sections and the AI Summary)
@@ -651,8 +650,8 @@ def render_ai_summary(mode: str):
     label = f"Mistral API ({MISTRAL_MODEL})" if cloud else "local LLM (LM Studio)"
     session_key = "ai_summary_cloud" if cloud else "ai_summary"
 
-    filter_key = (selected_mrp, selected_pgroup, selected_vendor_label, selected_material_label,
-                  selected_root_cause, selected_impact, timeframe_option)
+    filter_key = tuple(tuple(v) for v in (selected_mrp, selected_pgroup, selected_vendor_label,
+                  selected_material_label, selected_root_cause, selected_impact)) + (timeframe_option,)
 
     pseudonymise_on = False
     if cloud:

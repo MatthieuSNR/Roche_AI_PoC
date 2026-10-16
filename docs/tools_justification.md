@@ -235,7 +235,7 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
  | **Academic Use**      | Increasingly used in **research** for sharing interactive results (e.g., [arXiv](https://arxiv.org/)).                                                                                                         |
 
 ### **Key Features Used in the Project**
-- **Widgets**: Sidebar filters (vendor, MRP controller, material, root cause, period), radio buttons, buttons.
+- **Widgets**: Sidebar filters (MRP controller, purchasing group, vendor, material, root cause, impact, period); every filter is a **multiselect** (empty = All), so a planner can view their own scope plus the colleagues they back up (user feedback, demo of 16 Oct.).
 - **One scrolling page**: an overview (ION material status tiles) followed by 7 analysis sections (comments, root causes, frequent comments, root cause details, trends, statistics, AI summary), with a menu that stays at the top of the page to jump to a section.
 - **DataFrames**: Display cleaned data and results.
 - **Plots**: Render matplotlib/seaborn visualizations.
