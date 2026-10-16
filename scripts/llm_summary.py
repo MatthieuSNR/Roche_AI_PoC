@@ -28,7 +28,7 @@ MODEL_NAME = "mistralai/mistral-7b-instruct-v0.3"
 # Cloud: Mistral API (OpenAI-compatible). Same family of models as the local one, but hosted
 # by Mistral AI. The key is read from .env or, once deployed, from the Streamlit secrets.
 MISTRAL_BASE_URL = os.getenv("MISTRAL_BASE_URL", "https://api.mistral.ai/v1")
-MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-latest")  # check the model list of La Plateforme
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "ministral-14b-latest")  # free plan: small/medium often rate-limited (429), large not included (403)
 MAX_TOKENS = 750   # structured analysis of 250-350 words (~450 tokens), with a margin
 SECTIONS = ["Key findings", "Trend over time", "Where the issues come from",
             "Risks to escalate", "Recommended actions"]
