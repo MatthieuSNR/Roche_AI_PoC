@@ -5,6 +5,7 @@ pyarrow>=15.0          # parquet storage of the processed tables
 scikit-learn>=1.4      # TF-IDF keywords, later clustering / ML
 matplotlib>=3.8
 streamlit>=1.32
+streamlit-sortables>=0.3   # drag and drop of the table columns
 openai>=1.30           # client for the local LM Studio server
 deepl>=1.18            # translation DE -> EN (cloud API)
 langdetect>=1.0.9

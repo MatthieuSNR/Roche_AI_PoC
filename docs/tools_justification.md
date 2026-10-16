@@ -165,6 +165,8 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
 
 ---
 
+> **Dashboard (16 Oct.)**: the section is called **Smart Analysis** and uses the Mistral API (`ministral-14b-latest`), with names, vendors and material numbers always pseudonymised before sending (`PromptPseudonymiser`). The local LLM below is kept in the code as a backup (`render_ai_summary("local")`) but no longer shown.
+
 ## **📌 6. AI Summary: Local LLM with LM Studio (Mistral 7B Instruct v0.3, openai client v3.26.0)**
 
 ### **Why a local LLM?**
@@ -236,8 +238,9 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
 
 ### **Key Features Used in the Project**
 - **Widgets**: Sidebar filters (MRP controller, purchasing group, vendor, material, root cause, impact, period); every filter is a **multiselect** (empty = All), so a planner can view their own scope plus the colleagues they back up (user feedback, demo of 16 Oct.). The filters **cascade**: each one only offers the values that exist within the filters above it (e.g. only the vendors of the selected MRP controllers).
-- **Saved views** (like SAP *personalised views*): the current filters, period and table columns can be saved under a name and re-applied in one click by any user (stored on the Mac in `data/interim/saved_views.json`, not pushed to GitHub). The columns of the comments table are set in a compact **▥ Columns** menu: a checkbox per column to show or hide it, ↑ ↓ buttons to change the order (Streamlit 1.32 has no built-in column menu).
-- **Folding sidebar**: Views, Filters and Timeframe are menus that fold (`st.expander`), and their titles show the current state (active view, number of active filters, period), so every filter fits on one screen without scrolling (feedback from the first remote test).
+- **Saved views** (like SAP *personalised views*): the current filters, period and table columns can be saved under a name and re-applied in one click by any user (stored on the Mac in `data/interim/saved_views.json`, not pushed to GitHub). The columns of the comments table are set in a **▥ Columns** panel (toggle on the right, stays open until the user closes it): a checkbox per column to show or hide it, and **drag and drop** to change the order ([streamlit-sortables](https://github.com/ohtaman/streamlit-sortables), since Streamlit 1.32 has no built-in column menu).
+- **Top 5 / 10 / 20** choices of the root cause and frequent comment sections are behind a small *Number shown* menu, to keep the sections compact.
+- **Folding sidebar**: Views, Filters and Timeframe are menus that fold (`st.expander`, fixed titles without emojis), so every filter fits on one screen without scrolling (feedback from the first remote test).
 - **One scrolling page**: an overview (ION material status tiles) followed by 7 analysis sections (comments, root causes, frequent comments, root cause details, trends, statistics, AI summary), with a menu that stays at the top of the page to jump to a section.
 - **DataFrames**: Display cleaned data and results.
 - **Plots**: Render matplotlib/seaborn visualizations.

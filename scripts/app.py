@@ -12,10 +12,11 @@ import time
 # Make scripts/ importable so we can reuse our modules
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from llm_summary import (stream_summary, stream_summary_cloud, tidy, is_server_available,
-                         is_cloud_configured, build_prompt, MISTRAL_MODEL)
+                         is_cloud_configured)
 from pseudonymise import PromptPseudonymiser
 from stats_engine import compute_stats, root_cause_sources, weekly_active, NO_ROOT_CAUSE
 import ui
+from streamlit_sortables import sort_items
 
 
 
@@ -108,7 +109,7 @@ SECTIONS = [
     ("root-cause-details", "🔎 Comments for a Root Cause"),
     ("trends", "📈 Root Cause Trends"),
     ("key-statistics", "📋 Key Statistics"),
-    ("ai-summary", "🤖 AI Summary"),
+    ("ai-summary", "💡 Smart Analysis"),
 ]
 SECTION_TITLES = dict(SECTIONS)
 ui.top_bar("Material Availability", "Insights from Planner Comments", SECTIONS)
@@ -136,30 +137,32 @@ def load_views():
         return {}
 
 
-# Columns of the comments table: their order (col_order) and one checkbox state per column (col_vis_<name>)
+# Columns of the comments table: their order (col_order) and the visible ones (col_visible).
+# Kept outside the checkbox widgets: Streamlit forgets a widget's state while it is not drawn
+# (here, while the column panel is closed).
 st.session_state.setdefault("col_order", list(TABLE_COLUMNS.values()))
-for _c in TABLE_COLUMNS.values():
-    st.session_state.setdefault(f"col_vis_{_c}", _c in DEFAULT_COLUMNS)
+st.session_state.setdefault("col_visible", list(DEFAULT_COLUMNS))
 
 
 def shown_columns():
-    return [c for c in st.session_state["col_order"] if st.session_state.get(f"col_vis_{c}")]
+    return [c for c in st.session_state["col_order"] if c in st.session_state["col_visible"]]
+
+
+def toggle_column(name):
+    visible = st.session_state["col_visible"]
+    if st.session_state[f"cb_{name}"]:
+        visible.append(name)
+    elif name in visible:
+        visible.remove(name)
 
 
 def set_columns(columns):
     """Shows these columns in this order; the other columns are hidden and placed after them."""
     columns = [c for c in columns if c in TABLE_COLUMNS.values()] or DEFAULT_COLUMNS
     st.session_state["col_order"] = columns + [c for c in TABLE_COLUMNS.values() if c not in columns]
+    st.session_state["col_visible"] = list(columns)
     for c in TABLE_COLUMNS.values():
-        st.session_state[f"col_vis_{c}"] = c in columns
-
-
-def move_column(name, step):
-    order = st.session_state["col_order"]
-    i = order.index(name)
-    j = i + step
-    if 0 <= j < len(order):
-        order[i], order[j] = order[j], order[i]
+        st.session_state.pop(f"cb_{c}", None)  # checkboxes are redrawn from col_visible
 
 
 def apply_view():
@@ -195,14 +198,11 @@ def delete_view():
 
 
 # Sidebar: three menus that fold (Views, Filters, Timeframe), so all filters fit without scrolling.
-# Their titles show the current state (active view, number of active filters, period).
-current_view = st.session_state.get("view_name", "—")
-n_active = sum(bool(st.session_state.get(k)) for k in FILTER_KEYS)
-
-with st.sidebar.expander("⭐ Views" + (f" · {current_view}" if current_view != "—" else ""), expanded=False):
+# Fixed titles: a title that changes would make Streamlit re-create (and close) the menu.
+with st.sidebar.expander("Views", expanded=False):
     st.selectbox("Saved view:", ["—"] + sorted(load_views()), key="view_name", on_change=apply_view,
                  help="Applies the saved filters, period and table columns.")
-    if current_view != "—":
+    if st.session_state.get("view_name", "—") != "—":
         st.button("Delete this view", on_click=delete_view)
     st.text_input("Save the current view as:", key="new_view_name", placeholder="e.g. E28 + backups")
     st.button("Save", on_click=save_view)
@@ -233,7 +233,7 @@ def impact_order(value):
     return (IMPACT_FILTER_OPTIONS.index(value), "") if value in IMPACT_FILTER_OPTIONS else (len(IMPACT_FILTER_OPTIONS), value)
 
 
-filters_box = st.sidebar.expander("🔎 Filters" + (f" · {n_active} active" if n_active else ""), expanded=True)
+filters_box = st.sidebar.expander("Filters", expanded=True)
 selected_mrp = multi_filter(filters_box, "MRP Controller", "MRP_CONTROLLER", "f_mrp")
 selected_pgroup = multi_filter(filters_box, "Purchasing Group", "PURCHASING_GROUP", "f_pgroup")
 selected_vendor_label = multi_filter(filters_box, "Vendor", "VENDOR_LABEL", "f_vendor")          # name or account number
@@ -243,8 +243,7 @@ selected_impact = multi_filter(filters_box, "Impact", "Impact_Level", "f_impact"
 
 
 # --- Timeframe filter (Part A: record the user's choice only) ---
-timeframe_box = st.sidebar.expander("📅 Timeframe · " + st.session_state.get("timeframe", "All snapshots"),
-                                    expanded=False)
+timeframe_box = st.sidebar.expander("Timeframe", expanded=False)
 timeframe_option = timeframe_box.selectbox(
     "Select period:",
     ["All snapshots", "Last 4 weeks", "Last 8 weeks", "Last 16 weeks", "Custom period"],
@@ -339,14 +338,29 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = [st.container() for _ in range(7)]
 
 with tab1:
     ui.section("filtered-comments", SECTION_TITLES["filtered-comments"])
-    # "▥ Columns" menu: tick the columns to show, ↑ ↓ to change their order
-    menu_col, _ = st.columns([1, 2])
-    with menu_col.expander(f"▥ Columns ({len(shown_columns())}/{len(TABLE_COLUMNS)} shown)"):
+    # "▥ Columns" panel (right): tick the columns to show, drag them to change their order.
+    # A toggle rather than an expander: the panel stays open until the user closes it, and the
+    # drag-and-drop component is only drawn when visible (in a closed expander it gets no height).
+    _, menu_col = st.columns([1, 1])
+    with menu_col:
+        _, toggle_col = st.columns([2, 1])
+        show_menu = toggle_col.toggle("▥ Columns", key="show_column_menu")
+    if show_menu:
+        panel = menu_col.container(border=True)
+        c_check, c_order = panel.columns(2)
+        c_check.caption("Show / hide")
         for name in st.session_state["col_order"]:
-            c_box, c_up, c_down = st.columns([6, 1, 1])
-            c_box.checkbox(name, key=f"col_vis_{name}")
-            c_up.button("↑", key=f"col_up_{name}", on_click=move_column, args=(name, -1), help="Move up")
-            c_down.button("↓", key=f"col_down_{name}", on_click=move_column, args=(name, 1), help="Move down")
+            c_check.checkbox(name, value=name in st.session_state["col_visible"], key=f"cb_{name}",
+                             on_change=toggle_column, args=(name,))
+        with c_order:
+            st.caption("Order (drag and drop)")
+            visible = shown_columns()
+            if visible:
+                ordered = sort_items(visible, direction="vertical", key="col_sort_" + "|".join(visible))
+                if ordered and ordered != visible:
+                    st.session_state["col_order"] = ordered + [c for c in st.session_state["col_order"]
+                                                               if c not in ordered]
+                    st.rerun()
     shown = shown_columns() or DEFAULT_COLUMNS
     to_data = {v: k for k, v in TABLE_COLUMNS.items()}
     table_df = filtered_df.sort_values("Last_Seen", ascending=False)[[to_data[c] for c in shown]] \
@@ -373,10 +387,12 @@ with tab1:
 with tab2:
     ui.section("top-root-causes", SECTION_TITLES["top-root-causes"])
 
-    top_n_causes = st.radio(
-        "Show:", options=["Top 5", "Top 10", "Top 20"], horizontal=True,
-        key="radio_top_causes",
-    )
+    _, menu_col = st.columns([3, 1])
+    with menu_col.expander("Number shown"):
+        top_n_causes = st.radio(
+            "Show:", options=["Top 5", "Top 10", "Top 20"], horizontal=True,
+            key="radio_top_causes", label_visibility="collapsed",
+        )
     n_causes = int(top_n_causes.split(" ")[1])
 
     # 1. Comments without a root cause are counted apart (they are not a cause)
@@ -482,10 +498,12 @@ with tab2:
 with tab3:
     ui.section("frequent-comments", SECTION_TITLES["frequent-comments"])
 
-    top_n_comments = st.radio(
-        "Show:", options=["Top 5", "Top 10", "Top 20"], horizontal=True,
-        key="radio_top_comments",
-    )
+    _, menu_col = st.columns([3, 1])
+    with menu_col.expander("Number shown"):
+        top_n_comments = st.radio(
+            "Show:", options=["Top 5", "Top 10", "Top 20"], horizontal=True,
+            key="radio_top_comments", label_visibility="collapsed",
+        )
     n_comments = int(top_n_comments.split(" ")[1])
 
     # Count identical comments in the filtered data (same text on several materials / vendors)
@@ -715,10 +733,10 @@ with tab6:
 
 
 
-# ================= SECTION 7: AI Summary =================
+# ================= SECTION 7: Smart Analysis =================
 # Two ways to write the same analysis from the same pandas statistics:
-#  - Cloud: Mistral API, works once the app is deployed; names are pseudonymised before sending.
-#  - Local: LM Studio on this machine (unchanged), no data leaves the computer.
+#  - Cloud: Mistral API (shown in the dashboard); names are always pseudonymised before sending.
+#  - Local: LM Studio on this machine, kept as a backup: render_ai_summary("local") (not shown).
 @st.cache_resource(show_spinner=False)
 def pseudonymiser_template(n_rows: int):
     """Entity lists (vendors, materials...) are built once; each request gets a fresh() copy."""
@@ -728,20 +746,17 @@ def pseudonymiser_template(n_rows: int):
 def render_ai_summary(mode: str):
     """Button + loading screen + streamed answer, for mode 'cloud' or 'local'."""
     cloud = mode == "cloud"
-    label = f"Mistral API ({MISTRAL_MODEL})" if cloud else "local LLM (LM Studio)"
+    label = "Smart Analysis" if cloud else "local LLM (LM Studio)"
     session_key = "ai_summary_cloud" if cloud else "ai_summary"
 
     filter_key = tuple(tuple(v) for v in (selected_mrp, selected_pgroup, selected_vendor_label,
                   selected_material_label, selected_root_cause, selected_impact)) + (timeframe_option,)
 
-    pseudonymise_on = False
+    pseudonymise_on = cloud  # names, vendors and material numbers are always replaced before sending
     if cloud:
-        st.caption("Generated by the Mistral API. Prices and volumes are never sent: the request only contains "
-                   "aggregated statistics and a few planner comments. All figures are computed by pandas; "
-                   "the LLM only interprets them.")
-        pseudonymise_on = st.checkbox(
-            "Pseudonymise vendors, MRP controllers, purchasing groups and material numbers before sending "
-            "(recommended)", value=True, key="pseudonymise_cloud")
+        st.caption("A written review of the current selection: key findings, trends, where the issues come from, "
+                   "risks and recommended actions, illustrated with planner comments. All figures are computed "
+                   "from the data; the analysis only interprets them.")
     else:
         st.caption("Generated locally via LM Studio: no data leaves the machine. "
                    "All figures are computed by pandas; the LLM only interprets them.")
@@ -750,22 +765,14 @@ def render_ai_summary(mode: str):
         st.info("No comments match the current filters.")
         return
     if cloud and not is_cloud_configured():
-        st.warning("No Mistral API key found. Add MISTRAL_API_KEY to the .env file (local) or to the "
-                   "Streamlit secrets (deployed app).")
+        st.warning("Smart Analysis is not configured: add MISTRAL_API_KEY to the .env file.")
         return
     if not cloud and not is_server_available():
         st.warning("LM Studio server not reachable. Start it (Developer tab) and load the model.")
         return
 
     pseudonymiser = pseudonymiser_template(len(df)).fresh() if (cloud and pseudonymise_on) else None
-    if cloud:
-        with st.expander("What is sent to the API?"):
-            sent_stats = pseudonymiser.apply(stats) if pseudonymiser else stats
-            sent_comments = pseudonymiser.apply(stats["top_comments"]) if pseudonymiser else stats["top_comments"]
-            st.code(build_prompt(sent_stats, sent_comments, pseudonymised=pseudonymiser is not None)[0]["content"],
-                    language="text")
-
-    if st.button("Generate summary", type="primary", key=f"generate_{mode}"):
+    if st.button("Run Smart Analysis" if cloud else "Generate summary", type="primary", key=f"generate_{mode}"):
         # The LLM runs in a background thread while the loading screen shows the analysis
         # steps. Every value shown on the screen is a real figure of the current selection.
         # The answer is streamed: it appears word by word as soon as the model writes.
@@ -805,8 +812,8 @@ def render_ai_summary(mode: str):
              "value": f"median {stats.get('median_days_active', 0):.0f} days · {stats.get('comments_still_open', 0)} still open"},
             {"text": "Detecting week-by-week trends",
              "value": f"{stats.get('comments_first_snapshot', '–')} → {stats.get('comments_last_snapshot', '–')} comments/week"},
-            {"text": "Writing the summary with the Mistral API" if cloud else "Writing the summary with the local language model",
-             "value": ("pseudonymised" if pseudonymise_on else "not pseudonymised") if cloud else "on-device"},
+            {"text": "Writing the analysis" if cloud else "Writing the summary with the local language model",
+             "value": "names pseudonymised" if cloud else "on-device"},
         ]
         sample = (filtered_df["Comment_EN"].dropna().astype(str).str.slice(0, 110)
                   .sample(min(40, filtered_df["Comment_EN"].notna().sum()), random_state=0).tolist())
@@ -816,7 +823,7 @@ def render_ai_summary(mode: str):
         screen = st.empty()
         with screen.container():
             ui.ai_loading_screen(steps, total=stats["total_comments"],
-                                 sub=f"Statistics computed by pandas · {label}",
+                                 sub="Statistics computed from the data" if cloud else f"Statistics computed by pandas · {label}",
                                  comments=sample, step_ms=step_ms)
         started = time.time()
         # Loading screen until the model starts writing (and at least the animation length)
@@ -826,7 +833,7 @@ def render_ai_summary(mode: str):
 
         # Then the text appears as it is written
         live = st.empty()
-        meta = f"{selection_name} · writing with the {label}…"
+        meta = f"{selection_name} · writing…" if cloud else f"{selection_name} · writing with the {label}…"
         while not result["done"]:
             live.markdown(ui.ai_result_html("".join(result["parts"]) + " ▌", meta), unsafe_allow_html=True)
             time.sleep(0.15)
@@ -834,9 +841,9 @@ def render_ai_summary(mode: str):
 
         text = tidy("".join(result["parts"]))  # up to the last complete sentence
         if "error" in result:
-            st.error(f"LLM call failed: {result['error']}")
+            st.error(f"The analysis could not be generated: {result['error']}")
         elif not text:
-            st.error("LLM call failed: empty answer.")
+            st.error("The analysis could not be generated: empty answer.")
         else:
             st.session_state[session_key] = (
                 filter_key, text, selection_name, stats["total_comments"],
@@ -845,15 +852,11 @@ def render_ai_summary(mode: str):
     saved = st.session_state.get(session_key)
     if saved:
         if saved[0] != filter_key:
-            st.caption("⚠️ Summary generated with different filters.")
-        ui.ai_result(saved[1], f"{saved[2]} · based on {saved[3]} comments · generated {saved[4]} "
-                               f"with {saved[5]} · figures computed by pandas")
+            st.caption("⚠️ Analysis generated with different filters.")
+        ui.ai_result(saved[1], f"{saved[2]} · based on {saved[3]} comments · generated {saved[4]}"
+                               + ("" if cloud else f" with {saved[5]} · figures computed by pandas"))
 
 
 with tab7:
     ui.section("ai-summary", SECTION_TITLES["ai-summary"])
-    tab_cloud, tab_local = st.tabs(["☁️ Cloud (Mistral API)", "💻 Local (LM Studio)"])
-    with tab_cloud:
-        render_ai_summary("cloud")
-    with tab_local:
-        render_ai_summary("local")
+    render_ai_summary("cloud")  # local LLM (LM Studio) kept as a backup: render_ai_summary("local")
