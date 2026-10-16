@@ -136,12 +136,39 @@ def load_views():
         return {}
 
 
+# Columns of the comments table: their order (col_order) and one checkbox state per column (col_vis_<name>)
+st.session_state.setdefault("col_order", list(TABLE_COLUMNS.values()))
+for _c in TABLE_COLUMNS.values():
+    st.session_state.setdefault(f"col_vis_{_c}", _c in DEFAULT_COLUMNS)
+
+
+def shown_columns():
+    return [c for c in st.session_state["col_order"] if st.session_state.get(f"col_vis_{c}")]
+
+
+def set_columns(columns):
+    """Shows these columns in this order; the other columns are hidden and placed after them."""
+    columns = [c for c in columns if c in TABLE_COLUMNS.values()] or DEFAULT_COLUMNS
+    st.session_state["col_order"] = columns + [c for c in TABLE_COLUMNS.values() if c not in columns]
+    for c in TABLE_COLUMNS.values():
+        st.session_state[f"col_vis_{c}"] = c in columns
+
+
+def move_column(name, step):
+    order = st.session_state["col_order"]
+    i = order.index(name)
+    j = i + step
+    if 0 <= j < len(order):
+        order[i], order[j] = order[j], order[i]
+
+
 def apply_view():
     """Callback of the view selector: puts the saved values into the widgets before they are drawn."""
     view = load_views().get(st.session_state["view_name"])
     if view:
-        for key in FILTER_KEYS + ["table_columns"]:
+        for key in FILTER_KEYS:
             st.session_state[key] = view.get(key, [])
+        set_columns(view.get("table_columns", DEFAULT_COLUMNS))
         st.session_state["timeframe"] = view.get("timeframe", "All snapshots")
 
 
@@ -149,7 +176,8 @@ def save_view():
     name = st.session_state["new_view_name"].strip()
     if name:
         views = load_views()
-        views[name] = {key: st.session_state.get(key, []) for key in FILTER_KEYS + ["table_columns"]}
+        views[name] = {key: st.session_state.get(key, []) for key in FILTER_KEYS}
+        views[name]["table_columns"] = shown_columns()
         views[name]["timeframe"] = st.session_state.get("timeframe", "All snapshots")
         os.makedirs(os.path.dirname(VIEWS_PATH), exist_ok=True)
         with open(VIEWS_PATH, "w") as f:
@@ -166,20 +194,18 @@ def delete_view():
     st.session_state["view_name"] = "—"
 
 
-st.sidebar.header("Views")
-st.session_state.setdefault("table_columns", DEFAULT_COLUMNS)
-view_names = sorted(load_views())
-st.sidebar.selectbox("Saved view:", ["—"] + view_names, key="view_name", on_change=apply_view,
-                     help="Applies the saved filters and table columns.")
-if st.session_state.get("view_name", "—") != "—":
-    st.sidebar.button("Delete this view", on_click=delete_view)
-with st.sidebar.expander("Save the current view"):
-    st.text_input("Name (e.g. 'E28 + backups'):", key="new_view_name")
+# Sidebar: three menus that fold (Views, Filters, Timeframe), so all filters fit without scrolling.
+# Their titles show the current state (active view, number of active filters, period).
+current_view = st.session_state.get("view_name", "—")
+n_active = sum(bool(st.session_state.get(k)) for k in FILTER_KEYS)
+
+with st.sidebar.expander("⭐ Views" + (f" · {current_view}" if current_view != "—" else ""), expanded=False):
+    st.selectbox("Saved view:", ["—"] + sorted(load_views()), key="view_name", on_change=apply_view,
+                 help="Applies the saved filters, period and table columns.")
+    if current_view != "—":
+        st.button("Delete this view", on_click=delete_view)
+    st.text_input("Save the current view as:", key="new_view_name", placeholder="e.g. E28 + backups")
     st.button("Save", on_click=save_view)
-
-
-# Filters
-st.sidebar.header("Filters")
 
 
 # Filters, from top to bottom: MRP controller, purchasing group (organisational
@@ -190,13 +216,13 @@ st.sidebar.header("Filters")
 cascade_df = df
 
 
-def multi_filter(label, column, key, order=None):
+def multi_filter(box, label, column, key, order=None):
     global cascade_df
     available = set(cascade_df[column].dropna().unique())
     selected = [v for v in st.session_state.get(key, []) if v in set(df[column].dropna())]
     st.session_state[key] = selected  # drops values of a saved view that no longer exist
     options = sorted(available | set(selected), key=order) if order else sorted(available | set(selected))
-    selected = st.sidebar.multiselect(label, options, key=key, placeholder="All")
+    selected = box.multiselect(label, options, key=key, placeholder="All")
     if selected:
         cascade_df = cascade_df[cascade_df[column].isin(selected)]
     return selected
@@ -207,19 +233,19 @@ def impact_order(value):
     return (IMPACT_FILTER_OPTIONS.index(value), "") if value in IMPACT_FILTER_OPTIONS else (len(IMPACT_FILTER_OPTIONS), value)
 
 
-selected_mrp = multi_filter("Select MRP Controller:", "MRP_CONTROLLER", "f_mrp")
-selected_pgroup = multi_filter("Select Purchasing Group:", "PURCHASING_GROUP", "f_pgroup")
-selected_vendor_label = multi_filter("Select Vendor:", "VENDOR_LABEL", "f_vendor")       # name or account number
-selected_material_label = multi_filter("Select Material:", "MATERIAL_LABEL", "f_material")  # number or description
-selected_root_cause = multi_filter("Select Root Cause:", "Root_Cause", "f_root_cause")
-selected_impact = multi_filter("Select Impact:", "Impact_Level", "f_impact", order=impact_order)
-
-
+filters_box = st.sidebar.expander("🔎 Filters" + (f" · {n_active} active" if n_active else ""), expanded=True)
+selected_mrp = multi_filter(filters_box, "MRP Controller", "MRP_CONTROLLER", "f_mrp")
+selected_pgroup = multi_filter(filters_box, "Purchasing Group", "PURCHASING_GROUP", "f_pgroup")
+selected_vendor_label = multi_filter(filters_box, "Vendor", "VENDOR_LABEL", "f_vendor")          # name or account number
+selected_material_label = multi_filter(filters_box, "Material", "MATERIAL_LABEL", "f_material")  # number or description
+selected_root_cause = multi_filter(filters_box, "Root Cause", "Root_Cause", "f_root_cause")
+selected_impact = multi_filter(filters_box, "Impact", "Impact_Level", "f_impact", order=impact_order)
 
 
 # --- Timeframe filter (Part A: record the user's choice only) ---
-st.sidebar.subheader("Timeframe")
-timeframe_option = st.sidebar.selectbox(
+timeframe_box = st.sidebar.expander("📅 Timeframe · " + st.session_state.get("timeframe", "All snapshots"),
+                                    expanded=False)
+timeframe_option = timeframe_box.selectbox(
     "Select period:",
     ["All snapshots", "Last 4 weeks", "Last 8 weeks", "Last 16 weeks", "Custom period"],
     key="timeframe",
@@ -230,7 +256,7 @@ start_ts, end_ts = None, None
 if timeframe_option == "Custom period":
     min_date = df["First_Seen"].min().date()
     max_date = df["Last_Seen"].max().date()
-    date_range = st.sidebar.date_input(
+    date_range = timeframe_box.date_input(
         "Date range:",
         value=(min_date, max_date),
         min_value=min_date,
@@ -240,7 +266,7 @@ if timeframe_option == "Custom period":
     if isinstance(date_range, tuple) and len(date_range) == 2:
         start_ts = pd.to_datetime(date_range[0])
         end_ts = pd.to_datetime(date_range[1])
-st.sidebar.caption("A comment is in the period if it was visible in the dashboard at least once during it.")
+timeframe_box.caption("A comment is in the period if it was visible in the dashboard at least once during it.")
 
 
 # Filter data
@@ -313,10 +339,15 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = [st.container() for _ in range(7)]
 
 with tab1:
     ui.section("filtered-comments", SECTION_TITLES["filtered-comments"])
-    shown = st.multiselect(
-        "Columns (in display order: remove a column and add it again to move it to the end):",
-        list(TABLE_COLUMNS.values()), key="table_columns")
-    shown = shown or DEFAULT_COLUMNS
+    # "▥ Columns" menu: tick the columns to show, ↑ ↓ to change their order
+    menu_col, _ = st.columns([1, 2])
+    with menu_col.expander(f"▥ Columns ({len(shown_columns())}/{len(TABLE_COLUMNS)} shown)"):
+        for name in st.session_state["col_order"]:
+            c_box, c_up, c_down = st.columns([6, 1, 1])
+            c_box.checkbox(name, key=f"col_vis_{name}")
+            c_up.button("↑", key=f"col_up_{name}", on_click=move_column, args=(name, -1), help="Move up")
+            c_down.button("↓", key=f"col_down_{name}", on_click=move_column, args=(name, 1), help="Move down")
+    shown = shown_columns() or DEFAULT_COLUMNS
     to_data = {v: k for k, v in TABLE_COLUMNS.items()}
     table_df = filtered_df.sort_values("Last_Seen", ascending=False)[[to_data[c] for c in shown]] \
         .rename(columns=TABLE_COLUMNS)
