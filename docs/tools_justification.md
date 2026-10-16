@@ -149,7 +149,7 @@ Each choice is grounded in **technical requirements, academic standards, and ind
  | Local LLM (LM Studio) | Possible, but **slower** and less consistent than a dedicated translation engine. |
 
 ### **Data Governance**
-DeepL is a **cloud service**: only the comment text is sent (no vendor, material or quantity column). Before sending, the text is **pseudonymised** (`scripts/pseudonymise.py`): e-mail addresses, @-mentions, supplier names, material numbers, long numbers (PO, batch) and the company name are replaced by placeholders, which DeepL copies unchanged; the original values are restored locally after translation.
+DeepL is a **cloud service**: only the comment text is sent (no vendor, material or quantity column). Before sending, the text is **pseudonymised** (`scripts/pseudonymise.py`): e-mail addresses, @-mentions, supplier names, material numbers, long numbers (PO, batch) and the company name are replaced by placeholders, which DeepL copies unchanged; the original values are restored locally after translation. The same module protects the prompt of the Smart Analysis (section 6).
 
 **Residual limits** (thesis, 3.8):
 - Supplier names written in an **abbreviated or misspelled** form, and supplier names shorter than 4 characters, are not detected.
@@ -165,36 +165,55 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
 
 ---
 
-> **Dashboard (16 Oct.)**: the section is called **Smart Analysis** and uses the Mistral API (`ministral-14b-latest`), with names, vendors and material numbers always pseudonymised before sending (`PromptPseudonymiser`). The local LLM below is kept in the code as a backup (`render_ai_summary("local")`) but no longer shown.
+## **📌 6. Smart Analysis: Mistral API (cloud) with a local LLM as backup (LM Studio)**
 
-## **📌 6. AI Summary: Local LLM with LM Studio (Mistral 7B Instruct v0.3, openai client v3.26.0)**
+### **What the LLM does, and what it does not**
+**pandas computes every number** (`scripts/stats_engine.py`); the LLM only **writes** the analysis from these precomputed statistics and the most frequent comments, and is instructed never to compute or invent a figure. This is why a small model is sufficient and why the figures of the analysis can be checked against the dashboard.
 
-### **Why a local LLM?**
+### **Why the Mistral API (since 16 Oct.)?**
  | **Criteria**          | **Justification** |
  |-----------------------|-------------------|
- | **Confidentiality**   | The model runs **on the laptop** (LM Studio server, `http://127.0.0.1:1234/v1`): no Roche data leaves the machine. |
- | **Reliability of figures** | **pandas computes every number** (`scripts/stats_engine.py`); the LLM only **writes** the summary from these precomputed statistics and the most frequent comments. It is instructed never to compute or invent figures. |
- | **Cost**              | No API fee, no usage limit. |
- | **Standard interface** | LM Studio exposes an **OpenAI-compatible API**: the `openai` Python client is used, so the model can be swapped without changing the code. |
+ | **Need**              | The local model (Mistral 7B on the laptop) took 40–60 s per analysis, made the Mac heat up, and cannot run on a deployed or shared app. A hosted model removes the load from the laptop. |
+ | **Same family, same interface** | Mistral's API is **OpenAI-compatible**: the same `openai` client and the same prompt are used (only `MISTRAL_BASE_URL` and the key change), so cloud and local answers can be compared on the same selections. |
+ | **Model**             | `ministral-14b-latest` by default (`MISTRAL_MODEL` in `.env`). On the free plan, the small and medium models were often rate-limited (HTTP 429) and the large one not included (HTTP 403) when tested on 16 Oct.; this choice is a practical one and may change with the plan. |
+ | **Provider**          | European provider, free tier sufficient for a prototype. For an adoption by Roche, the choice would follow the contract Roche has already approved (e.g., a model hosted in an EU region by a provider under Roche's agreement). |
+ | **Cost**              | Negligible at this volume (one request of about 1,000 input tokens per analysis); the free plan quotas are shared by all visitors of a shared demo. |
 
-### **Key Features Used in the Project** (`scripts/llm_summary.py`)
-- **`chat.completions.create()`** with low temperature (0.2) for factual answers.
-- **Compact prompt** (`build_facts`): only the key statistics, without indentation or duplicated figures (≈800 tokens instead of ≈1,500), and every key states its unit (`_pct` = percentage, otherwise a count) after the model turned "+75 comments" into "+75%" in a test.
-- **Streaming** (`stream_summary`): the summary appears word by word in the dashboard as soon as the model starts writing.
-- **Structured, in-depth analysis**: 250–350 words in five fixed sections (Key findings, Trend over time, Where the issues come from, Risks to escalate, Recommended actions), rendered as headings and bullet points. The prompt includes the most frequent informative comments of the three main root causes, and the model must quote at least one comment word for word, so the analysis explains *why* and not only *how much*.
-- **Speed on the laptop** (Apple M3, 16 GB): Mistral 7B Q4_K_M writes ≈5 tokens/s when the Mac is short of memory (swap used), so a summary takes 40–60 s. Closing other applications frees memory for the model; smaller models (3–4B) are an option if speed matters more than quality.
-- **Server check** (`is_server_available`) so the dashboard shows a clear message when LM Studio is not running.
+### **Key Features Used in the Project** (`scripts/llm_summary.py`, `scripts/pseudonymise.py`)
+- **`chat.completions.create()`** with low temperature (0.2) for factual answers; the same prompt for cloud and local (`build_prompt`).
+- **Compact prompt** (`build_facts`): only the key statistics, without indentation or duplicated figures, and every key states its unit (`_pct` = percentage, otherwise a count) after the model turned "+75 comments" into "+75%" in a test.
+- **Structured, in-depth analysis**: 250–350 words in five fixed sections (Key findings, Trend over time, Where the issues come from, Risks to escalate, Recommended actions). The prompt includes the most frequent informative comments of the three main root causes, and the model must quote at least one comment word for word, so the analysis explains *why* and not only *how much*.
+- **Streaming** (`stream_summary_cloud`): the analysis appears word by word.
+- **Pseudonymised prompt** (`PromptPseudonymiser`): suppliers, MRP controllers, purchasing groups and material numbers are replaced by aliases (`VENDOR_1`, `MRP_2`, `PGROUP_3`, `MATERIAL_4`), and e-mails, @-mentions, long numbers and the company name in the comments too. The prompt tells the model to copy the aliases unchanged. The alias table stays in memory on the Mac; aliases in the answer are replaced by the real names before display (`stream_restored` holds back the last word so that half an alias is never shown). Pseudonymisation is always on for the cloud model.
+- **Nothing else is sent**: no price and no volume; only shares, counts, trends and a few short comments. A test (`tests/test_cloud_summary.py`) checks that no real supplier, MRP controller, purchasing group, material number or e-mail appears in the request, and that the answer comes back with the real names.
+
+### **Data Governance and Limits**
+- **Pseudonymisation is a safeguard, not an approval**: the use of an external LLM API on Roche data has still to be validated with Roche (open point). Business-confidential content (shares per supplier, planner comments) leaves the machine in aliased form.
+- **Residual limits** are those of section 5: supplier names written in abbreviated or misspelled form and person names without "@" are not detected; MRP controllers and purchasing groups are short codes, replaced in the statistics but not searched inside free text.
+- **Provider terms**: Mistral's retention and training terms for the plan in use have not been verified yet; they must be checked and cited before the thesis states that the data is not stored.
+- **Quality**: LLM output is not deterministic and there is no formal evaluation yet (faithfulness of figures and quotes, comparison cloud vs local). The figures are protected by construction (pandas), the interpretation is not.
+- **Availability**: the cloud analysis needs the network and a valid key; the free plan can answer 429 under load.
+
+### **Local backup: LM Studio (Mistral 7B Instruct v0.3)**
+ | **Criteria**          | **Justification** |
+ |-----------------------|-------------------|
+ | **Confidentiality**   | The model runs **on the laptop** (`http://127.0.0.1:1234/v1`): no Roche data leaves the machine. Still the reference if data governance forbids any external API. |
+ | **Cost**              | No API fee, no usage limit. |
+ | **Limits**            | ≈5 tokens/s on an Apple M3 with 16 GB when memory is short, so 40–60 s per analysis and a hot laptop; Mistral 7B does not accept the `system` role (instructions are merged into the user message). |
+ | **Status**            | Kept in the code (`stream_summary`, `render_ai_summary("local")`, `is_server_available`) but no longer shown in the dashboard. |
 
 ### **Alternatives Considered**
- | **Alternative** | **Rejection Reason** |
- |-----------------|----------------------|
- | Cloud LLM APIs (OpenAI, Anthropic, Azure OpenAI) | Better quality, but **confidential comments would leave the company** without an approved data agreement. |
- | Ollama | Equivalent local server; LM Studio was chosen for its graphical interface (model download, server start). |
+ | **Alternative** | **Reason** |
+ |-----------------|-----------|
+ | Other cloud APIs (OpenAI, Anthropic, Azure OpenAI, AWS Bedrock, Google Vertex AI) | Comparable quality for this task, so the choice depends on data governance and contracts rather than benchmarks. Not retained for the prototype; the code only needs another base URL and key. Under an existing Roche agreement, one of these (EU region) would be the natural choice. |
+ | Local only (LM Studio, Ollama) | Best confidentiality but slow, hot laptop, impossible to deploy or share. Ollama is equivalent to LM Studio; LM Studio was chosen for its graphical interface. |
  | Larger local models (≥ 13B) | Too slow on a laptop for an interactive dashboard. |
 
 ### **References**
+- [Mistral AI Documentation](https://docs.mistral.ai/)
 - [LM Studio Documentation](https://lmstudio.ai/docs)
 - [Mistral 7B Instruct v0.3](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.3)
+- [GDPR (Regulation (EU) 2016/679), Art. 4(5): definition of pseudonymisation](https://eur-lex.europa.eu/eli/reg/2016/679/oj)
 
 
 ## **📌 7. Visualization: matplotlib (v3.8.4) + seaborn (v0.13.2)**
@@ -232,7 +251,7 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
  |-----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
  | **Ease of Use**       | **No frontend development** required. Write Python scripts and get a **fully interactive web app**.                                                                                                             |
  | **Integration**       | Works with **pandas, matplotlib, and scikit-learn** out of the box.                                                                                                                                               |
- | **Deployment**        | **Free hosting** on [Streamlit Cloud](https://streamlit.io/cloud).                                                                                                                                             |
+ | **Deployment**        | Free hosting on [Streamlit Cloud](https://streamlit.io/cloud) is possible, but not used with the confidential data (see section 12).                                                                                                                                             |
  | **Industry Adoption** | Widely used by **data science teams** for internal prototypes (acquired by Snowflake in 2022).                                                                                                                      |
  | **Academic Use**      | Increasingly used in **research** for sharing interactive results (e.g., [arXiv](https://arxiv.org/)).                                                                                                         |
 
@@ -241,7 +260,7 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
 - **Saved views** (like SAP *personalised views*): the current filters, period and table columns can be saved under a name and re-applied in one click by any user (stored on the Mac in `data/interim/saved_views.json`, not pushed to GitHub). The columns of the comments table are set in a **▥ Columns** panel (toggle on the right, stays open until the user closes it): a checkbox per column to show or hide it, and **drag and drop** to change the order ([streamlit-sortables](https://github.com/ohtaman/streamlit-sortables), since Streamlit 1.32 has no built-in column menu).
 - **Top 5 / 10 / 20** of the root cause and frequent comment sections: a "Select a view" dropdown, same look as "Select a root cause" in the section below.
 - **Folding sidebar**: Views, Filters and Timeframe are menus that fold (`st.expander`, fixed titles without emojis), so every filter fits on one screen without scrolling (feedback from the first remote test).
-- **One scrolling page**: an overview (ION material status tiles) followed by 7 analysis sections (comments, root causes, frequent comments, root cause details, trends, statistics, AI summary), with a menu that stays at the top of the page to jump to a section.
+- **One scrolling page**: an overview (ION material status tiles) followed by 7 analysis sections (comments, root causes, frequent comments, root cause details, trends, statistics, Smart Analysis), with a menu that stays at the top of the page to jump to a section.
 - **DataFrames**: Display cleaned data and results.
 - **Plots**: Render matplotlib/seaborn visualizations.
 - **`st.cache_data`**: The comments file is read once, not at every click.
@@ -300,8 +319,8 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
 ### **Why?**
  | **Criteria**          | **Justification** |
  |-----------------------|-------------------|
- | **Security**          | The DeepL API key is stored in a local `.env` file, **excluded from Git** by `.gitignore`. `scripts/config.py` only reads it, so the code can be pushed to GitHub without the key. |
- | **Simplicity**        | One file to edit when the key changes; `.env.example` documents the expected variables. |
+ | **Security**          | The secrets are stored in a local `.env` file, **excluded from Git** by `.gitignore`: `DEEPL_API_KEY` (translation), `MISTRAL_API_KEY` (Smart Analysis) and `APP_PASSWORD` (password page of the shared app). `scripts/config.py` and `scripts/llm_summary.py` only read them, so the code can be pushed to GitHub without any key. |
+ | **Simplicity**        | One file to edit when a key changes; `.env.example` documents the expected variables (`LM_STUDIO_*` and `MISTRAL_MODEL` are settings, not secrets). |
 
 ### **Lesson Learned**
 An earlier version stored the key directly in `scripts/config.py`, which was pushed to GitHub. A key that has been pushed must be **revoked**: deleting the file does not remove it from the Git history.
@@ -319,10 +338,13 @@ Each folder and file has a **clear purpose**, making the project **easy to maint
    **Folder/File**       | **Purpose**                                                                                     | **Justification**                                                                                                                                                                                                 |
  |-----------------------|-------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
  | `data/`               | **Input data**: daily snapshots, cleaned comments, translation cache (never pushed to GitHub)   | **Separation of concerns**: Raw data is isolated from scripts and outputs to avoid confusion.                                                                                                               |
- | `scripts/`            | **Python scripts** for the PoC (cleaning, NLP, visualization, dashboard)                          | **Modularity**: Each script has a **single responsibility**: `data_cleaning.py` (build the comments file), `translation.py` (DeepL), `stats_engine.py` (statistics), `llm_summary.py` (AI summary), `ui.py` (layout), `app.py` (dashboard). |
+ | `scripts/`            | **Python scripts** for the PoC (cleaning, NLP, visualization, dashboard)                          | **Modularity**: Each script has a **single responsibility**: `data_cleaning.py` (build the comments file), `translation.py` (DeepL), `pseudonymise.py` (hides names before DeepL / Mistral), `stats_engine.py` (statistics), `llm_summary.py` (Smart Analysis), `ui.py` (layout), `app.py` (dashboard). |
+ | `tests/`              | **pytest tests** (pseudonymisation, cloud summary)                                              | **Trust**: the privacy guarantee (no real name in the request) is checked automatically, with fake API clients and no Roche data. |
+ | `assets/`, `.streamlit/` | **Roche logo, favicon, theme**                                                               | **Recognition**: a look close to the existing ION dashboard, kept out of the code. |
+ | `share.sh`            | **Shares the dashboard through ngrok** (usability tests)                                         | **Control**: one command, refuses to start without a password (section 12). |
  | `outputs/`            | **Generated outputs** (e.g., cleaned data, visualizations, models)                              | **Reproducibility**: Outputs are saved separately to avoid overwriting and to track progress.                                                                                                                                 |
  | `venv/`               | **Virtual environment** for Python dependencies                                                | **Isolation**: Ensures dependencies (e.g., `spaCy 3.8.16`) do not conflict with other projects or system-wide Python.                                                                                              |
- | `docs/`               | **Project documentation** (e.g., this file, `project_steps.md`)                                | **Clarity**: Centralizes all documentation for easy reference by stakeholders (e.g., Roche team) and for your thesis.                                                                                              |
+ | `docs/`               | **Project documentation** (this file, `project_steps.md`, `projected_project_structure.md`)                                | **Clarity**: Centralizes all documentation for easy reference by stakeholders (e.g., Roche team) and for your thesis.                                                                                              |
  | `requirements.txt`    | **List of Python dependencies**                                                               | **Reproducibility**: Allows others to recreate the exact same environment using `pip install -r requirements.txt`.                                                                                                         |
  | `README.md`           | **Project overview and instructions**                                                          | **Onboarding**: Helps new users (e.g., Roche stakeholders or thesis reviewers) understand how to run the project.                                                                                                  |
 
@@ -388,3 +410,27 @@ Each folder and file has a **clear purpose**, making the project **easy to maint
 ### **References**
 - [ngrok Documentation](https://ngrok.com/docs)
 - [Streamlit: Remote access](https://docs.streamlit.io/develop/concepts/configuration)
+
+
+---
+
+---
+
+## **📌 13. Tests: pytest (v9.1.1)**
+
+### **Why pytest?**
+ | **Criteria**          | **Justification** |
+ |-----------------------|-------------------|
+ | **Need**              | The main promise of the cloud analysis is a negative one (no real name leaves the machine). It is checked by tests rather than by a one-off look at the prompt. |
+ | **No dependency on data or network** | The tests use a small synthetic table and a fake API client (`tests/test_cloud_summary.py`), so they run without Roche data, without a Mistral key and offline. |
+ | **Simplicity**        | Plain functions with `assert`; `python -m pytest -q tests`. |
+
+### **What Is Tested**
+- `tests/test_pseudonymise.py`: identifying elements are replaced and restored; the same value gets the same placeholder (DeepL path).
+- `tests/test_cloud_summary.py`: the request of the Smart Analysis contains no real supplier, MRP controller, purchasing group, material number or e-mail; a supplier gets the same alias in the statistics and in the comments; aliases of the streamed answer (even split across chunks) are replaced by the real names; the local prompt is unchanged.
+
+### **Limits**
+The tests do not call the real Mistral API and do not evaluate the quality of the analysis; the detection limits of section 5 (abbreviated names, person names) are not covered.
+
+### **References**
+- [pytest Documentation](https://docs.pytest.org/)
