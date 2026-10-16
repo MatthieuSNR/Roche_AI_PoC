@@ -29,6 +29,23 @@ st.set_page_config(
 ui.apply_style()  # Look of the Roche ION Material Availability dashboard (scripts/ui.py)
 
 
+# Password gate for remote access (tunnel from this Mac): active only when APP_PASSWORD is set in .env
+def check_password():
+    password = os.getenv("APP_PASSWORD", "")
+    if not password or st.session_state.get("authenticated"):
+        return
+    st.title("Material Availability – Insights from Planner Comments")
+    entered = st.text_input("Password", type="password")
+    if entered:
+        if entered == password:
+            st.session_state["authenticated"] = True
+            st.rerun()
+        st.error("Wrong password.")
+    st.stop()
+
+check_password()
+
+
 # Load cleaned data (built by scripts/data_cleaning.py, translated by scripts/translation.py)
 @st.cache_data
 def load_data():
