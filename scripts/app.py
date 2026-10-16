@@ -387,12 +387,9 @@ with tab1:
 with tab2:
     ui.section("top-root-causes", SECTION_TITLES["top-root-causes"])
 
-    _, menu_col = st.columns([3, 1])
-    with menu_col.expander("Number shown"):
-        top_n_causes = st.radio(
-            "Show:", options=["Top 5", "Top 10", "Top 20"], horizontal=True,
-            key="radio_top_causes", label_visibility="collapsed",
-        )
+    top_n_causes = st.selectbox(
+        "Select a view:", options=["Top 5", "Top 10", "Top 20"], key="radio_top_causes",
+    )
     n_causes = int(top_n_causes.split(" ")[1])
 
     # 1. Comments without a root cause are counted apart (they are not a cause)
@@ -498,12 +495,9 @@ with tab2:
 with tab3:
     ui.section("frequent-comments", SECTION_TITLES["frequent-comments"])
 
-    _, menu_col = st.columns([3, 1])
-    with menu_col.expander("Number shown"):
-        top_n_comments = st.radio(
-            "Show:", options=["Top 5", "Top 10", "Top 20"], horizontal=True,
-            key="radio_top_comments", label_visibility="collapsed",
-        )
+    top_n_comments = st.selectbox(
+        "Select a view:", options=["Top 5", "Top 10", "Top 20"], key="radio_top_comments",
+    )
     n_comments = int(top_n_comments.split(" ")[1])
 
     # Count identical comments in the filtered data (same text on several materials / vendors)
