@@ -39,6 +39,7 @@ project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIBRARY_PATH = os.path.join(project_dir, "lexicon", "abbreviations.csv")
 REVIEW_PATH = os.path.join(project_dir, "data", "interim", "abbreviations_review.csv")
 EVIDENCE_PATH = os.path.join(project_dir, "data", "interim", "abbreviation_evidence.csv")
+SHEET_PATH = os.path.join(project_dir, "data", "interim", "abbreviations_for_review.xlsx")
 COMMENTS_PATH = os.path.join(project_dir, "data", "cleaned_comments.csv")
 
 ENTRY_SEPARATOR = "\n"
@@ -203,6 +204,34 @@ def build_review(library, df):
     return out.sort_values(["_c", "entries_with_abbreviation"], ascending=[True, False]).drop(columns="_c")
 
 
+def build_sheet(library, df):
+    """Simple table for the planners: abbreviation, meaning, language of the entries where it was found
+    (DE / EN, from the language detection of the pipeline). One row per abbreviation and language; the
+    meaning is the proposed expansion in that language (empty when nothing is proposed yet)."""
+    pairs = _entries(df)
+    rows = []
+    for rule, row in zip(library.rules, library.table.itertuples(index=False)):
+        found = {lang for entry, lang in pairs if rule.regex.search(entry)}
+        for lang in sorted(found):
+            first, second = (row.expansion_de, row.expansion_en) if lang == "de" else (row.expansion_en, row.expansion_de)
+            rows.append({"Abbreviation": row.abbreviation, "Meaning": first or second, "Language": lang.upper()})
+    out = pd.DataFrame(rows, columns=["Abbreviation", "Meaning", "Language"])
+    return out.sort_values(["Abbreviation", "Language"], key=lambda c: c.str.lower()).reset_index(drop=True)
+
+
+def write_sheet(sheet, path=SHEET_PATH):
+    """Excel file with minimal layout: bold header, column widths, nothing else."""
+    from openpyxl.styles import Font
+    with pd.ExcelWriter(path, engine="openpyxl") as writer:
+        sheet.to_excel(writer, index=False, sheet_name="Abbreviations")
+        ws = writer.sheets["Abbreviations"]
+        for cell in ws[1]:
+            cell.font = Font(bold=True)
+        for column, width in zip("ABC", (18, 60, 10)):
+            ws.column_dimensions[column].width = width
+        ws.freeze_panes = "A2"
+
+
 def discover(library, df, min_count=2):
     """Abbreviation-like words that no library row matches yet: words with a full stop inside, a word of
     at most 6 letters followed by a full stop and a lower-case word or number ("Wtl. Bedarf"), and words of
@@ -226,13 +255,17 @@ if __name__ == "__main__":
         table = library.table
         print(f"{len(table)} rows | expand=yes: {(table['expand'] == 'yes').sum()} | to confirm: {(table['expand'] == 'no').sum()}")
         print("\n".join(problems) if problems else "Library valid.")
-    if "--report" in sys.argv or "--discover" in sys.argv:
+    if "--report" in sys.argv or "--discover" in sys.argv or "--sheet" in sys.argv:
         path = sys.argv[sys.argv.index("--comments") + 1] if "--comments" in sys.argv else COMMENTS_PATH
         df = pd.read_csv(path, usecols=["Comment", "Entry_Languages"])
     if "--report" in sys.argv:
         review = build_review(library, df)
         review.to_csv(REVIEW_PATH, index=False, encoding="utf-8-sig")
         print(f"Review sheet written: {REVIEW_PATH} (confidential: contains excerpts of comments)")
+    if "--sheet" in sys.argv:
+        sheet = build_sheet(library, df)
+        write_sheet(sheet)
+        print(f"Excel sheet written: {SHEET_PATH} ({len(sheet)} rows)")
     if "--discover" in sys.argv:
         print("Not in the library yet (word, number of entries):")
         for token, n in discover(library, df):

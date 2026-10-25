@@ -159,3 +159,14 @@ def test_translation_works_entry_by_entry(monkeypatch):
     out = tr.add_translations(df, dry_run=True)
     assert list(out["Comment_EN"]) == ["pull-in requested\nsupplier confirmed", "no stock-out"]
     assert list(out["comment_language"]) == ["de", "de"]
+
+
+def test_review_sheet_has_three_simple_columns_and_the_entry_language():
+    table = pd.DataFrame([{"abbreviation": "PLZ", "match": "exact", "pattern": "", "applies_to": "both",
+                           "expansion_de": "Planlieferzeit", "expansion_en": "planned delivery time",
+                           "confidence": "high", "expand": "yes"}])
+    library = ab.Library(table)
+    df = pd.DataFrame({"Comment": ["PLZ 30 Tage\nPLZ is 30 days"], "Entry_Languages": ["de|en"]})
+    sheet = ab.build_sheet(library, df)
+    assert sheet.columns.tolist() == ["Abbreviation", "Meaning", "Language"]
+    assert sheet.values.tolist() == [["PLZ", "Planlieferzeit", "DE"], ["PLZ", "planned delivery time", "EN"]]
