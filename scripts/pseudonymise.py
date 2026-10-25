@@ -9,6 +9,7 @@ original values back into the English translation (restore). DeepL therefore nev
 
 * e-mail addresses                                    -> EMAIL_n
 * @-mentions of colleagues ("@Muster:")               -> PERSON_n
+* names of the sourcing managers (SOURCING_MANAGER)  -> PERSON_n
 * supplier names known from the VENDOR_NAME column    -> VENDOR_n
 * material numbers known from MATERIAL_NUMBER         -> MATERIAL_n
 * any other number with 6 digits or more (PO, batch),
@@ -55,9 +56,24 @@ def vendor_names(series: pd.Series) -> list[str]:
     return sorted(names, key=len, reverse=True)
 
 
-def build_patterns(vendors: list[str], materials: list[str]) -> list[tuple[str, re.Pattern]]:
+def person_names(sourcing_managers: pd.Series, extra=()) -> list[str]:
+    """First names and surnames of the people known from the SOURCING_MANAGER column
+    ("ADQ - Steffen Pape", "HD0 - Blaylock, Natasha"), longest first; at least 4 letters."""
+    names = set(extra)
+    for raw in sourcing_managers.dropna().astype(str).unique():
+        for part in re.split(r"[\s,;/]+", raw.split(" - ", 1)[-1]):
+            part = part.strip("-.")
+            if len(part) >= MIN_NAME_LENGTH and part.isalpha():
+                names.add(part)
+    return sorted(names, key=len, reverse=True)
+
+
+def build_patterns(vendors: list[str], materials: list[str], persons: list[str] = ()) -> list[tuple[str, re.Pattern]]:
     """Ordered (label, regex) list. Order matters: e-mails before numbers, names before IDs."""
     patterns = [("EMAIL", EMAIL), ("PERSON", MENTION)]
+    if persons:
+        patterns.append(("PERSON", re.compile(
+            r"(?<!\w)(" + "|".join(map(re.escape, persons)) + r")(?!\w)", re.IGNORECASE)))
     if vendors:
         patterns.append(("VENDOR", re.compile(
             r"(?<!\w)(" + "|".join(map(re.escape, vendors)) + r")(?!\w)", re.IGNORECASE)))
@@ -164,7 +180,8 @@ class PromptPseudonymiser:
                 self._exact[v.strip()] = "VENDOR"
 
         materials = df["MATERIAL_NUMBER"].dropna().astype(str).tolist() if "MATERIAL_NUMBER" in df else []
-        self._patterns = build_patterns(vendor_names(pd.Series(list(vendors), dtype=str)), materials)
+        persons = person_names(df["SOURCING_MANAGER"]) if "SOURCING_MANAGER" in df else []
+        self._patterns = build_patterns(vendor_names(pd.Series(list(vendors), dtype=str)), materials, persons)
 
     def fresh(self) -> "PromptPseudonymiser":
         """New pseudonymiser for one request: same entity lists (expensive to build), empty aliases."""

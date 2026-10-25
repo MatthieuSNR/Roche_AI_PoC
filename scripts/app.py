@@ -126,7 +126,17 @@ TABLE_COLUMNS = {  # data column -> displayed name, in the default order of the 
     "MATERIAL_STATUS": "Material Status", "Root_Cause": "Root Cause", "Impact": "Impact",
     "VENDOR_NAME": "Vendor Name", "PURCHASING_GROUP": "Purchasing Group",
     "MRP_CONTROLLER": "MRP Controller", "MATERIAL_LABEL": "Material"}
-DEFAULT_COLUMNS = [c for c in TABLE_COLUMNS.values() if c != "Original comment"]
+if "Comment_Expanded" in df.columns:  # built by data_cleaning.py: abbreviations written out
+    TABLE_COLUMNS["Comment_Expanded"] = "Comment (expanded)"
+DEFAULT_COLUMNS = [c for c in TABLE_COLUMNS.values() if c not in ("Original comment", "Comment (expanded)")]
+
+# A comment is a journal: its entries are separated by a line break in the data. A table cell shows
+# one line, so the entries are put one after the other with a marker (newest entry first).
+ENTRY_MARK = "  ▸  "
+
+
+def inline_entries(series):
+    return series.astype("string").str.replace("\n", ENTRY_MARK, regex=False)
 
 
 def load_views():
@@ -365,6 +375,9 @@ with tab1:
     to_data = {v: k for k, v in TABLE_COLUMNS.items()}
     table_df = filtered_df.sort_values("Last_Seen", ascending=False)[[to_data[c] for c in shown]] \
         .rename(columns=TABLE_COLUMNS)
+    for text_col in ["Comment (EN)", "Original comment", "Comment (expanded)"]:
+        if text_col in table_df:
+            table_df[text_col] = inline_entries(table_df[text_col])
     for date_col in ["First seen", "Last seen", "Stockout Date"]:
         if date_col in table_df:
             table_df[date_col] = pd.to_datetime(table_df[date_col], errors="coerce").dt.strftime("%Y-%m-%d")
@@ -379,7 +392,8 @@ with tab1:
         hide_index=True,
     )
     st.caption("One row = one comment on one material of one vendor. "
-               "'Days visible' = for how many days the comment stayed in the dashboard.")
+               "'Days visible' = for how many days the comment stayed in the dashboard. "
+               f"A comment with several entries (journal) shows them one after the other, separated by '{ENTRY_MARK.strip()}'.")
 
 
 # ================= SECTION 2: Top Root Causes =================
@@ -501,8 +515,13 @@ with tab3:
     n_comments = int(top_n_comments.split(" ")[1])
 
     # Count identical comments in the filtered data (same text on several materials / vendors)
+    # (a journal with several entries counts each entry on its own)
+    with_text = filtered_df.dropna(subset=["Comment_EN"])
+    entries_df = with_text.assign(Comment_EN=with_text["Comment_EN"].astype(str).str.split("\n")).explode("Comment_EN")
+    entries_df["Comment_EN"] = entries_df["Comment_EN"].str.strip()
+    entries_df = entries_df[entries_df["Comment_EN"] != ""]
     top_comments_df = (
-        filtered_df.groupby("Comment_EN")
+        entries_df.groupby("Comment_EN")
         .agg(Occurrences=("Comment_EN", "size"),
              Materials=("MATERIAL_NUMBER", "nunique"),
              Vendors=("VENDOR_NAME", "nunique"),
@@ -555,6 +574,7 @@ with tab4:
                    "% of its comments = share of the vendor's (group's, controller's) comments.")
 
         st.markdown("**Comments**")
+        details = details.assign(Comment_EN=inline_entries(details["Comment_EN"]))
         st.dataframe(
             details.sort_values("Last_Seen", ascending=False)[
                 ["Comment_EN", "Days_Active", "VENDOR_LABEL", "PURCHASING_GROUP", "MRP_CONTROLLER", "MATERIAL_LABEL"]].rename(

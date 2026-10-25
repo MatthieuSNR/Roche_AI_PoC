@@ -26,6 +26,12 @@ def _share_table(series: pd.Series, top: int = 5) -> dict:
     }
 
 
+def _entries(comments: pd.Series) -> pd.Series:
+    """One text per ENTRY of the comments (entries are separated by a line break), without empty ones."""
+    entries = comments.dropna().astype(str).str.split("\n").explode().str.strip()
+    return entries[entries != ""]
+
+
 def weekly_active(df: pd.DataFrame, by: str | None = None) -> pd.DataFrame:
     """Number of comments visible in the dashboard each week (optionally split by a column).
     A comment counts in a week if First_Seen <= week end and Last_Seen >= week start."""
@@ -127,14 +133,13 @@ def compute_stats(filtered_df: pd.DataFrame, all_df: pd.DataFrame | None = None)
         stats["german_comments_pct"] = _pct((filtered_df["comment_language"] == "de").sum(), n)
 
     # 8. Most frequent comments (verbatim for the LLM)
-    stats["top_comments"] = [
-        c for c in filtered_df["Comment_EN"].value_counts().head(5).index
-    ]
+    # (a comment is a journal of entries separated by line breaks: each entry is counted on its own)
+    stats["top_comments"] = list(_entries(filtered_df["Comment_EN"]).value_counts().head(5).index)
 
     # 9. Evidence for the LLM: the most frequent INFORMATIVE comments (>= 25 characters,
     #    short codes like "PX13" say nothing) of each of the 3 main root causes
     def informative_comments(cause, n=3):
-        texts = filtered_df.loc[filtered_df["Root_Cause"] == cause, "Comment_EN"].dropna().astype(str).str.strip()
+        texts = _entries(filtered_df.loc[filtered_df["Root_Cause"] == cause, "Comment_EN"])
         counts = texts[texts.str.len() >= 25].value_counts()
         return [c[:160] for c in counts.head(n).index]
 

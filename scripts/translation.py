@@ -1,6 +1,10 @@
 """
 Translation: adds comment_language and Comment_EN to data/cleaned_comments.csv.
 
+* Entry by entry: a comment cell is a journal of several entries, one per line (see data_cleaning.py).
+  Each entry has its own language and is translated, cached and pseudonymised on its own; the
+  translated entries are put back one per line in Comment_EN. The text translated is Comment_Expanded
+  (abbreviations written out, scripts/abbreviations.py) when that column exists.
 * Language: the comments are English or German only. langdetect alone labels short,
   jargon-heavy comments as Hungarian, Catalan, Norwegian... and those were never
   translated, so detection is restricted to 'en' / 'de' (+ a small German lexicon).
@@ -24,13 +28,15 @@ import time
 import pandas as pd
 from langdetect import DetectorFactory, detect_langs
 
-from pseudonymise import build_patterns, pseudonymise, report, restore, vendor_names
+from pseudonymise import build_patterns, person_names, pseudonymise, report, restore, vendor_names
 
 project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COMMENTS_PATH = os.path.join(project_dir, "data", "cleaned_comments.csv")
 CACHE_PATH = os.path.join(project_dir, "data", "interim", "translation_cache.csv")
 # Earlier versions of cleaned_comments.csv: their Comment_EN translations are reused
 OLD_TRANSLATED_FILES = [os.path.join(project_dir, "data", "interim", "cleaned_comments_before_rebuild.csv")]
+
+ENTRY_SEPARATOR = "\n"   # one entry per line inside a comment cell
 
 DetectorFactory.seed = 0  # make langdetect reproducible
 
@@ -111,18 +117,36 @@ def translate_missing(texts, cache, patterns, batch_size=50):
     print(f"DeepL characters used this month: {usage.count} / {usage.limit}")
 
 
+def entry_languages(df, text_column):
+    """Language ('de' / 'en') of every entry of every comment: read from Entry_Languages (written by
+    data_cleaning.py, detected on the original wording) or, if missing, detected here."""
+    known = df["Entry_Languages"] if "Entry_Languages" in df.columns else [None] * len(df)
+    result = []
+    for text, langs in zip(df[text_column], known):
+        entries = str(text).split(ENTRY_SEPARATOR)
+        if isinstance(langs, str) and len(langs.split("|")) == len(entries):
+            result.append(langs.split("|"))
+        else:
+            result.append([detect_language(e) for e in entries])
+    return result
+
+
 def add_translations(df, dry_run=False):
     df = df.copy()
-    df["comment_language"] = df["Comment"].map(detect_language)
+    text_column = "Comment_Expanded" if "Comment_Expanded" in df.columns else "Comment"
+    languages = entry_languages(df, text_column)
+    df["Entry_Languages"] = ["|".join(langs) for langs in languages]
+    df["comment_language"] = ["de" if "de" in langs else "en" for langs in languages]
     cache = load_cache()
 
-    german = df["comment_language"] == "de"
-    texts = df.loc[german, "Comment"].map(normalize).unique().tolist()
+    entries = [[normalize(e) for e in str(t).split(ENTRY_SEPARATOR)] for t in df[text_column]]
+    texts = sorted({e for row, langs in zip(entries, languages) for e, lang in zip(row, langs) if lang == "de" and e})
     todo = [t for t in texts if t not in cache]
-    print(f"German comments: {len(texts)} distinct texts | already translated: {len(texts) - len(todo)} "
+    print(f"German entries: {len(texts)} distinct texts | already translated: {len(texts) - len(todo)} "
           f"| to translate: {len(todo)} ({sum(map(len, todo))} characters)")
 
-    patterns = build_patterns(vendor_names(df["VENDOR_NAME"]), df["MATERIAL_NUMBER"].dropna().astype(str).tolist())
+    persons = person_names(df["SOURCING_MANAGER"]) if "SOURCING_MANAGER" in df.columns else []
+    patterns = build_patterns(vendor_names(df["VENDOR_NAME"]), df["MATERIAL_NUMBER"].dropna().astype(str).tolist(), persons)
     if todo:
         counts = report(todo, patterns)
         print("Pseudonymised before sending (number of texts):", counts.to_dict() if len(counts) else "nothing")
@@ -130,8 +154,9 @@ def add_translations(df, dry_run=False):
         translate_missing(todo, cache, patterns)
     save_cache(cache)
 
-    df["Comment_EN"] = df["Comment"]
-    df.loc[german, "Comment_EN"] = df.loc[german, "Comment"].map(normalize).map(cache).fillna(df.loc[german, "Comment"])
+    def translated(row, langs):
+        return ENTRY_SEPARATOR.join(cache.get(e, e) if lang == "de" else e for e, lang in zip(row, langs))
+    df["Comment_EN"] = [translated(row, langs) for row, langs in zip(entries, languages)]
     return df
 
 

@@ -6,19 +6,23 @@ Status on 16 October 2026. Each step names the script that implements it.
 - **Objective**: Combine all daily snapshot CSV files from `Snapshot_2026` and clean the comments.
 - **Actions** (`scripts/data_cleaning.py`):
   - Load all CSV files using `glob` and `pandas` (26 files, 174 daily snapshots, ≈2.07 million rows), keep only the rows with a comment (≈87,700).
-  - Clean comments: remove the prefix `"pseudo, YYYY-MM-DD: "` (regex; comments without prefix are kept).
+  - **Split the journal**: a comment cell holds several entries, one per line, each signed and dated (`login, 2026-06-18: message`), and the tool re-signs an entry every time it is edited (chains such as `a, 2026-07-16: a, 2026-07-13: b, 2026-06-26: message`). Each entry is cut out on its own (`parse_comment`); typos in the signature (`20206-07-23`, `08072026`, missing colon, a signature in the middle of a line) are tolerated; an unsigned line continues the previous entry.
+  - **Remove the metadata**: the whole signature chain (login, date, time) leaves the text. The logins are staff identifiers, i.e. personal data (thesis 3.7): they are not kept; only anonymous metadata remains (`N_Entries`, `N_Authors`, `First_Entry_Date`, `Last_Entry_Date`). The entries stay one per line in the same cell, so that their succession remains visible (the dashboard shows them one after the other, separated by ▸).
+  - **Write the abbreviations out** (`scripts/abbreviations.py`, library `lexicon/abbreviations.csv`): `Comment_Expanded` is `Comment` with the certain abbreviations written out, entry by entry and in the language of the entry (`50 Stk.` → `50 Stück`, `KW34` → `Kalenderwoche 34`). `Comment` keeps the original wording. `Entry_Languages` records the language of each entry.
   - Keep one row per (material, vendor, comment) instead of one row per distinct text, so that
     "X% of this vendor's comments" counts every vendor concerned (result: ≈2,265 rows).
   - Record how long each comment stayed in the dashboard: `First_Seen`, `Last_Seen`,
     `N_Snapshots`, `Days_Active`. The other columns (status, root cause, impact) take their latest known value.
 - **Tools**: `pandas`, `glob`, `re`.
-- **Output**: `data/cleaned_comments.csv` (all useful columns retained).
+- **Output**: `data/cleaned_comments.csv` (all useful columns retained, plus `Comment_Expanded`, `Entry_Languages` and the entry metadata).
+- **Order of the pipeline**: split entries and remove signatures → write abbreviations out → pseudonymise → DeepL (German entries only) → rest unchanged.
+- **Library of abbreviations**: one row per abbreviation with a proposed meaning (German and English), context (material planning, production planning, quality, logistics...), confidence and an `expand` flag. Only rows with `expand = yes` (certain meaning, confidence high) are written out; ambiguous ones (e.g. `LT`: delivery date or lead time), unknown ones and names of companies or products stay untouched until the planners have confirmed them. After validation: set `expand` to `yes`, `python scripts/data_cleaning.py`. `python scripts/abbreviations.py --report` writes a review sheet with frequencies and examples (confidential, `data/interim`); `--discover` lists abbreviation-like words not yet in the library.
 
 ## 📌 Step 1b: Language Detection and Translation
 - **Objective**: Analyse all comments in English (about two thirds are written in German).
 - **Actions** (`scripts/translation.py`):
   - Detect the language, restricted to English / German (`langdetect` + a small German lexicon).
-  - **Pseudonymise** each German comment before it is sent (Step 3), translate it with DeepL, restore the original values locally → column `Comment_EN`.
+  - Work **entry by entry** on `Comment_Expanded`: **pseudonymise** each German entry before it is sent (Step 3), translate it with DeepL, restore the original values locally; the entries are put back one per line → column `Comment_EN`.
   - Cache every translation in `data/interim/translation_cache.csv`: a comment is paid for only once.
 - **Tools**: `langdetect`, `deepl`.
 - **Output**: `comment_language` and `Comment_EN` columns in `data/cleaned_comments.csv`.
@@ -38,7 +42,7 @@ Status on 16 October 2026. Each step names the script that implements it.
 ## 📌 Step 3: Pseudonymisation (data governance)
 - **Objective**: Reduce what leaves the machine whenever text is sent to a cloud service.
 - **Actions** (`scripts/pseudonymise.py`, tests in `tests/`):
-  - **DeepL**: comments only; e-mails, @-mentions, supplier names, material numbers, long numbers and the company name are replaced by placeholders (`<keep>` tags) and restored after translation.
+  - **DeepL**: comments only; e-mails, @-mentions, names of the sourcing managers, supplier names, material numbers, long numbers and the company name are replaced by placeholders (`<keep>` tags) and restored after translation.
   - **Mistral API**: the prompt of the Smart Analysis is pseudonymised by `PromptPseudonymiser` (`VENDOR_n`, `MRP_n`, `PGROUP_n`, `MATERIAL_n`, plus the elements above in the comments). The alias → name table stays in memory; aliases in the answer are replaced by the real names before display.
   - Prices and volumes are never part of the prompt (only shares, counts, trends and a few comments).
 - **Limits** (thesis 3.8): abbreviated or misspelled supplier names and person names without "@" are not detected; MRP controllers and purchasing groups are replaced in the statistics, not inside free text. Pseudonymisation reduces the risk; it does not replace Roche's approval.
@@ -87,6 +91,7 @@ source venv/bin/activate
 - [ ] Validate with Roche (tool engineer / IT) the use of an external LLM API and the hosting of a demo outside Roche.
 - [ ] Check Mistral's data retention and training terms for the plan used, and cite them in the thesis.
 - [ ] Revoke the DeepL key that was once pushed to GitHub (it remains in the Git history).
+- [ ] Have the abbreviation library validated by the planners (Johannes and Alexis): review sheet `data/interim/abbreviations_review.csv`; start with the low-confidence abbreviations, `LT` first.
 - [ ] Evaluate the Smart Analysis (are the figures and quotes faithful? compare cloud vs local on the same selections); no formal evaluation exists yet.
 - [ ] Deepen NLP analysis (keyword extraction, root cause correlations); add word clouds / heatmaps.
 - [ ] If Roche adopts the dashboard: rebuild it on an internal platform (e.g., R Shiny, Posit Connect).
