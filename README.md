@@ -9,6 +9,7 @@ This project aims to **extract actionable insights** for Roche’s planner comme
 ## 📊 Current Status
 - **Data Cleaning**: the comments of the 174 daily snapshots of `Snapshot_2026` are stored in `data/cleaned_comments.csv`: one row per (material, vendor, comment), with `First_Seen`, `Last_Seen`, `N_Snapshots` and `Days_Active` (how long the comment stayed visible). A comment cell is a **journal** (several dated and signed entries): the entries are split, the signatures (staff logins, dates) removed and kept only as anonymous metadata (`N_Entries`, `N_Authors`, `First_Entry_Date`, `Last_Entry_Date`), and the entries stay one per line in the cell.
 - **Abbreviation library** (`lexicon/abbreviations.csv`): German and English abbreviations of the comments (LT, PLZ, ETA, STK...) with a proposed meaning, context and confidence; only the certain ones are written out (`Comment_Expanded`) before pseudonymisation and translation. The others wait for the validation by the planners.
+- **DeepL jargon glossary** (`lexicon/glossary_de_en.csv`): German supply-chain terms that DeepL translates inconsistently or wrongly (`Vorzug` → pull-in, `Abriss` → supply gap, `Rückbuchung` → reversal posting). Only validated rows (`use = yes`, confidence high) are uploaded to DeepL; the others are proposals for the planners.
 - **Translation**: German comments are translated to English with DeepL (`Comment_EN`). Every translation is cached in `data/interim/translation_cache.csv`, so a comment is paid for only once.
 - **Streamlit Dashboard** (`scripts/app.py`): filters for **MRP controller, purchasing group, vendor, material, root cause, impact and period** (several values per filter, e.g. a planner and the colleagues they back up; the filters cascade); **saved views** (filters + table columns) that any user can re-apply; comment-centred statistics ("X% of this vendor's comments are about root cause Y, vs Z% overall", "which vendors / MRP controllers a root cause comes from", how long comments stay open); **Smart Analysis** written by the Mistral API (names pseudonymised before sending); a local LLM (LM Studio) is kept in the code as a backup.
 - **Remote access** (`share.sh`): the dashboard can be opened by testers from their own browser through an ngrok tunnel, protected by a password; the data stays on this Mac.
@@ -36,7 +37,8 @@ Roche_AI_PoC/
 │   └── cleaned_comments.csv     # Cleaned + translated comments (not pushed to GitHub)
 │
 ├── lexicon/
-│   └── abbreviations.csv        # Library of abbreviations (DE/EN) with proposed meanings, to be validated by the planners
+│   ├── abbreviations.csv        # Library of abbreviations (DE/EN) with proposed meanings, to be validated by the planners
+│   └── glossary_de_en.csv       # DeepL glossary of German jargon (proposed translations, to be validated)
 │
 ├── docs/
 │   ├── project_steps.md         # Step-by-step methodology
@@ -48,7 +50,8 @@ Roche_AI_PoC/
 │   ├── app.py                   # Streamlit dashboard
 │   ├── data_cleaning.py         # Builds data/cleaned_comments.csv: journal entries split, signatures removed, abbreviations written out
 │   ├── abbreviations.py         # Reads lexicon/abbreviations.csv, writes abbreviations out, review sheet
-│   ├── translation.py           # Language detection + DeepL translation (Comment_EN)
+│   ├── translation.py           # Language detection + DeepL translation (Comment_EN), uses the glossary
+│   ├── glossary.py              # Reads lexicon/glossary_de_en.csv, creates/reuses the DeepL glossary
 │   ├── stats_engine.py          # All statistics (pandas), used by the dashboard and the LLM
 │   ├── llm_summary.py           # AI summary: Mistral API (cloud) or local LLM (LM Studio)
 │   ├── pseudonymise.py          # Hides names/IDs before text is sent to DeepL or Mistral
@@ -82,7 +85,9 @@ Roche_AI_PoC/
    ```bash
    python scripts/data_cleaning.py
    python scripts/abbreviations.py --check --report   # validates the library, writes the review sheet (data/interim)
-   python scripts/translation.py --dry-run   # how many characters will be sent to DeepL
+   python scripts/glossary.py --check        # validates the DeepL glossary
+   python scripts/translation.py --dry-run   # characters to send to DeepL + cached translations made without the glossary
+   # python scripts/translation.py --refresh-glossary   # (optional) also redo those, costs characters
    python scripts/translation.py
    ```
 

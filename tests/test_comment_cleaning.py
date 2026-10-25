@@ -154,7 +154,8 @@ def test_translation_works_entry_by_entry(monkeypatch):
     })
     cache = {"Vorzug angefragt": "pull-in requested", "kein Stockout": "no stock-out"}
     monkeypatch.setattr(tr, "load_cache", lambda: dict(cache))
-    monkeypatch.setattr(tr, "save_cache", lambda c: None)
+    monkeypatch.setattr(tr, "save_cache", lambda c, marks=None: None)
+    monkeypatch.setattr(tr, "load_marks", lambda: {})
     out = tr.add_translations(df, dry_run=True)
     assert list(out["Comment_EN"]) == ["pull-in requested\nsupplier confirmed", "no stock-out"]
     assert list(out["comment_language"]) == ["de", "de"]
