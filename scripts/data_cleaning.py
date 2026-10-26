@@ -37,6 +37,7 @@ import glob
 import os
 import re
 import sys
+import time
 
 import pandas as pd
 
@@ -163,13 +164,13 @@ def merge_snapshots(snapshot_dir=SNAPSHOT_DIR, commented_only=False):
     files = sorted(glob.glob(os.path.join(snapshot_dir, "*.csv")))
     if not files:
         raise FileNotFoundError(f"No snapshot CSV found in {snapshot_dir}")
-    parts, total = [], 0
+    parts, total, started = [], 0, time.time()
     for file in files:
         df = pd.read_csv(file, low_memory=False)
         total += len(df)
         parts.append(df[df["comment"].notna()] if commented_only else df)
     df = pd.concat(parts, ignore_index=True).rename(columns={"Issue": "Root_Cause", "comment": "Comment"})
-    df.attrs.update(rows_total=total, n_files=len(files))
+    df.attrs.update(rows_total=total, n_files=len(files), seconds=round(time.time() - started, 1))
     return df
 
 
@@ -268,7 +269,7 @@ def build_cleaned_comments(raw, expand=True):
 if __name__ == "__main__":
     merged = merge_snapshots(commented_only=True)
     raw = keep_commented_rows(merged)
-    print(f"1. merge_snapshots: {merged.attrs['n_files']} files, {merged.attrs['rows_total']:,} rows in total")
+    print(f"1. merge_snapshots: {merged.attrs['n_files']} files, {merged.attrs['rows_total']:,} rows in total ({merged.attrs['seconds']} s)")
     print(f"2. keep_commented_rows: {len(raw):,} rows with a comment, snapshots: {raw['Snapshot_Date'].nunique()}")
     split = split_journal(raw)
     print(describe_step("3. split_journal (signature-only comments dropped)", raw, split))
