@@ -158,3 +158,18 @@ def test_embeddings_are_cached_and_the_model_loaded_only_for_new_texts(tmp_path)
     ins.embed(["a", "ccc"], load_model=FakeModel, cache_path=str(path))          # only the new text is encoded
     assert calls == [["a", "bb"], ["ccc"]]
     assert (again[1] == first[0]).all()
+
+
+def test_lab_filters_vendor_material_and_impact():
+    import insights_pages as pages
+    t = pd.DataFrame({"Snapshot_Date": pd.to_datetime(["2026-09-01"] * 4), "MATERIAL_NUMBER": [1, 1, 2, 3],
+                      "VENDOR_ACCOUNT_NUMBER": [10, 10, 20, 30], "MRP_CONTROLLER": "E1", "PURCHASING_GROUP": "G1",
+                      "Root_Cause": ["X", "X", "Y", None], "Impact_Level": ["Production", None, "None (no impact)", None],
+                      "VENDOR_LABEL": ["A — 10", "A — 10", "B — 20", "C — 30"],
+                      "MATERIAL_LABEL": ["m — 1", "m — 1", "n — 2", "o — 3"]})
+    pick = lambda **sel: sorted(pages.filter_tracking(t, sel)["MATERIAL_NUMBER"].unique())
+    assert pick(VENDOR_LABEL=["other description — 20"]) == [2]          # matched on the number
+    assert pick(MATERIAL_LABEL=["m (old description) — 1"]) == [1]
+    assert pick(Impact_Level=["Production"]) == [1]                       # all rows of the item kept
+    assert pick(Impact_Level=["Not communicated"]) == [3]                 # nothing entered at all
+    assert pick(Impact_Level=["None (no impact)"]) == [2]

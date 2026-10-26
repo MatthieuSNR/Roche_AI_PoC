@@ -62,14 +62,34 @@ def load_tracking():
     return t
 
 
+def _label_key(label):
+    """'Description — 1234567' -> '1234567' (the number after the last ' — ' of a filter label)."""
+    return str(label).rsplit(" — ", 1)[-1]
+
+
 def filter_tracking(tracking, selections, period=None):
-    """Same sidebar filters as the comments (the impact filter is left out: it is analysed here) + the timeframe."""
-    for column, selected in selections.items():
-        if selected and column in tracking.columns:
-            tracking = tracking[tracking[column].isin(selected)]
+    """The sidebar filters and the timeframe, on the tracking table (one row per day and item):
+    * MRP controller, purchasing group, root cause: on the rows;
+    * vendor and material: on their number (the label of the filter ends with it);
+    * impact: on the items whose impact over the timeframe is one of the selected levels; 'Not communicated'
+      = items with no impact entered at all ('None (no impact)' = planning entered that there is none)."""
     if period:
         start, end = period
         tracking = tracking[(tracking["Snapshot_Date"] >= start) & (tracking["Snapshot_Date"] <= end)]
+    for column in ("MRP_CONTROLLER", "PURCHASING_GROUP", "Root_Cause"):
+        if selections.get(column):
+            tracking = tracking[tracking[column].isin(selections[column])]
+    if selections.get("VENDOR_LABEL"):
+        keys = {_label_key(v) for v in selections["VENDOR_LABEL"]}
+        tracking = tracking[tracking["VENDOR_LABEL"].map(_label_key).isin(keys)]
+    if selections.get("MATERIAL_LABEL"):
+        keys = {_label_key(v) for v in selections["MATERIAL_LABEL"]}
+        tracking = tracking[tracking["MATERIAL_NUMBER"].astype("int64").astype(str).isin(keys)]
+    if selections.get("Impact_Level"):
+        wanted = set(selections["Impact_Level"])
+        levels = tracking.groupby(ins.ITEM)["Impact_Level"].agg(lambda s: set(s.dropna()))
+        keep = levels[levels.map(lambda s: bool(s & wanted) or (not s and ins.NOT_COMMUNICATED in wanted))].index
+        tracking = tracking.set_index(ins.ITEM).loc[lambda d: d.index.isin(keep)].reset_index()
     return tracking
 
 
@@ -397,13 +417,12 @@ def page_cause_impact(tracking, selection_name):
 # ------------------------------------------------------------------ page 4
 @st.cache_data(show_spinner="Looking for weak signals...")
 def _weak_signals(tracking, comments_en):
+    """All items with a comment and the prediction tool, trained on the whole history (it needs volume)."""
     items = ins.weak_signal_items(tracking, comments_en)
-    phrases = ins.signal_phrases(items)
-    context = {c: ins.signal_context(items, c) for c in ins.CONTEXT}
     model = ins.signal_model(items)
     if model:
         items["Risk"], items["Why"] = model["risk"], model["reasons"]
-    return items, phrases, context, model
+    return items, model
 
 
 def _bar_vs_average(frame, label_column, value_column, average, title, highlight):
@@ -426,7 +445,21 @@ def _bar_vs_average(frame, label_column, value_column, average, title, highlight
     return fig
 
 
-def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name):
+@st.cache_data(show_spinner="Looking for weak signals in the selection...")
+def _selection_signals(items):
+    return ins.signal_phrases(items), {c: ins.signal_context(items, c) for c in ins.CONTEXT}
+
+
+def _top_share(items, share=0.1):
+    """Of the items the tool ranks highest (top 10%), the share that later had an impact, and the share of all
+    impacts they contain."""
+    n_top = max(1, int(round(len(items) * share)))
+    top = items.sort_values("Risk", ascending=False).head(n_top)
+    found = top["Severe_later"].sum() / max(items["Severe_later"].sum(), 1) * 100
+    return n_top, top["Severe_later"].mean() * 100, found
+
+
+def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, period=None):
     ui.section("weak-signals", "Weak Signals — " + selection_name)
     if tracking is None:
         return _missing_tracking()
@@ -434,11 +467,22 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name):
     explain("**Can we see an impact coming?** For every item (a material from a vendor), we look at its **first "
             "comment** and its context at that moment (vendor, root cause, material status), and check whether a "
             "**Production or Market impact** was communicated **later**.\n\n"
-            "A weak signal = a phrase or a context after which such an impact comes more often than usual. The "
-            "analysis uses the whole history (it needs volume); the sidebar filters apply to the watch list.")
-    items, phrases, context, model = _weak_signals(tracking, comments_en)
+            "A weak signal = a phrase or a context after which such an impact comes more often than usual. "
+            "Everything on this page follows the sidebar filters and the timeframe (items first commented in it); "
+            "only the prediction tool is trained on the whole history, because it needs volume.")
+    all_items, model = _weak_signals(tracking, comments_en)
+    in_scope = set(map(tuple, tracking_filtered[ins.ITEM].drop_duplicates().to_numpy()))
+    items = all_items[[(m, v) in in_scope for m, v in zip(all_items["MATERIAL_NUMBER"], all_items["VENDOR_ACCOUNT_NUMBER"])]]
+    if period:
+        items = items[(items["First_comment"] >= period[0]) & (items["First_comment"] <= period[1])]
+    items = items.reset_index(drop=True)
+    if items.empty:
+        st.info("No item with a comment for the current filters and timeframe.")
+        return
     severe = items[items["Severe_later"]]
     base = len(severe) / len(items) * 100
+    enough = len(items) >= 30 and len(severe) >= 3
+    phrases, context = _selection_signals(items) if enough else (pd.DataFrame(), {c: pd.DataFrame() for c in ins.CONTEXT})
     m1, m2, m3 = st.columns(3)
     m1.metric("Items with a comment", f"{len(items):,}",
               help="Items whose first comment came before any severe impact (items already in Production / Market "
@@ -446,9 +490,15 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name):
     m2.metric("Impact communicated later", f"{len(severe):,}", delta=f"{base:.1f}% of them", delta_color="off",
               help="Items that received a Production or Market impact after their first comment. The others had no "
                    "such impact communicated (which does not prove there was none).")
-    m3.metric("Median warning time", f"{severe['Days_before_impact'].median():.0f} days",
+    m3.metric("Median warning time", f"{severe['Days_before_impact'].median():.0f} days" if len(severe) else "–",
               help="Half of the impacts came less than this many days after the first comment, half came later: the "
                    "time there was to react.")
+    if not enough:
+        st.warning(f"{len(items)} item{'s' if len(items) > 1 else ''} with a comment ({len(severe)} with an impact "
+                   "later) in this selection: too few to find reliable signals (at least 30 items and 3 impacts are "
+                   "needed). Widen the filters or the timeframe. The watch list still works.")
+        _watch_list(items, tracking, model)
+        return
 
     # --- main findings
     lines = []
@@ -525,22 +575,24 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name):
         st.info("Not enough items to train a model.")
     else:
         scores = model["scores"]
-        best = scores.iloc[-1]
-        n_top = scores.attrs["top_n"]
-        insights_box([
-            f"If you check first the **{n_top} items** (10%) the tool ranks most at risk, **{best['Impact rate in the top 10%']:.0f}%** "
-            f"of them later had a Production / Market impact, against **{base:.0f}%** on average: "
-            f"**{best['× average']:.1f}× better than checking at random**.",
-            f"These {n_top} items contain **{best['Share of all impacts found']:.0f}%** of all the impacts that came later.",
-            f"Using the comment and its context (vendor, root cause, status) works better than the root cause alone "
-            f"({scores.iloc[0]['Impact rate in the top 10%']:.0f}% in the top 10%)."])
+        n_top, hit, found = _top_share(items)
+        lines = [f"In this selection, if you check first the **{n_top} items** (10%) the tool ranks most at risk, "
+                 f"**{hit:.0f}%** of them later had a Production / Market impact, against **{base:.0f}%** on average"
+                 + (f": **{hit / base:.1f}× better than checking at random**." if base else ".")]
+        if len(severe):
+            lines.append(f"These {n_top} items contain **{found:.0f}%** of the impacts that came later in the selection.")
+        lines.append("Over all items, using the comment and its context (vendor, root cause, status) works better than "
+                     f"the root cause alone: {scores.iloc[-1]['Impact rate in the top 10%']:.0f}% vs "
+                     f"{scores.iloc[0]['Impact rate in the top 10%']:.0f}% in the top 10% (chart below).")
+        insights_box(lines)
+        all_base = scores.attrs["n_severe"] / scores.attrs["n_items"] * 100
         fig, ax = plt.subplots(figsize=(10, 2.4))
         ax.barh(scores["Model"][::-1], scores["Impact rate in the top 10%"][::-1], color=["#1A73E8", "#7B61FF", "#0B41CD"])
         for i, v in enumerate(scores["Impact rate in the top 10%"][::-1]):
             ax.text(v + 0.5, i, f"{v:.0f}%", va="center", fontsize=8)
-        ax.axvline(base, color="#374151", linestyle="--", linewidth=1)
-        ax.text(base, 2.45, f" average {base:.0f}%", fontsize=7.5, color="#374151")
-        ax.set_xlabel("% of the 10% highest-ranked items that later had a Production / Market impact")
+        ax.axvline(all_base, color="#374151", linestyle="--", linewidth=1)
+        ax.text(all_base, 2.45, f" average {all_base:.0f}%", fontsize=7.5, color="#374151")
+        ax.set_xlabel("All items: % of the 10% highest-ranked items that later had a Production / Market impact")
         ax.tick_params(axis="y", labelsize=8)
         ax.spines[["top", "right"]].set_visible(False)
         plt.tight_layout()
@@ -570,7 +622,11 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name):
                                     weights.tail(10).iloc[::-1].assign(Effect="lowers the risk")]),
                          use_container_width=True, hide_index=True)
 
-    # --- watch list
+    _watch_list(items, tracking, model)
+
+
+def _watch_list(items, tracking, model):
+    """Open items of the selection, ranked by the risk the tool gives them, with the reasons."""
     ui.panel_header("Watch list: open items that look like those that led to an impact")
     explain("Items **still visible on the last snapshot**, with no Production / Market impact communicated yet, ranked "
             "by their risk. The risk comes from the tool above: it compares the item's first comment and context with "
@@ -578,11 +634,10 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name):
             "**Why** gives the 3 elements that raise the risk of this item most. A list of items to look at first, "
             "not a certainty.")
     if not model:
+        st.info("Not enough items in the history to train the tool.")
         return
     last_day = tracking["Snapshot_Date"].max()
-    in_scope = set(map(tuple, tracking_filtered[ins.ITEM].drop_duplicates().to_numpy()))
     watch = items[(items["Last_seen"] == last_day) & ~items["Severe_later"]].copy()
-    watch = watch[[(m, v) in in_scope for m, v in zip(watch["MATERIAL_NUMBER"], watch["VENDOR_ACCOUNT_NUMBER"])]]
     watch["Days since first comment"] = (last_day - watch["First_comment"]).dt.days
     watch = watch.sort_values("Risk", ascending=False).head(25)
     watch["Risk"] = (watch["Risk"] * 100).round(0)
@@ -597,8 +652,8 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name):
                      "Why": st.column_config.TextColumn(width="large", help="The 3 elements of the first comment and its "
                                                                             "context that raise the risk most."),
                      "First comment (EN)": st.column_config.TextColumn(width="large")})
-    st.caption(f"Items still visible on {last_day:%d.%m.%Y} with no Production / Market impact communicated. "
-               "The sidebar filters apply to this list.")
+    st.caption(f"Items of the selection still visible on {last_day:%d.%m.%Y} with no Production / Market impact "
+               "communicated.")
 
 
 def render(page, df, filtered_df, selections, selection_name, period=None):
@@ -613,5 +668,4 @@ def render(page, df, filtered_df, selections, selection_name, period=None):
     elif page == "cause-impact":
         page_cause_impact(tracking_filtered, selection_name)
     elif page == "weak-signals":
-        page_weak_signals(tracking, filter_tracking(tracking, selections) if tracking is not None else None,
-                          st.session_state["_comments_en"], selection_name)
+        page_weak_signals(tracking, tracking_filtered, st.session_state["_comments_en"], selection_name, period)

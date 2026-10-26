@@ -339,7 +339,8 @@ selection_name = " / ".join(selection_parts) if selection_parts else "All commen
 if PAGE:
     insights_pages.render(PAGE, df, filtered_df, {
         "MRP_CONTROLLER": selected_mrp, "PURCHASING_GROUP": selected_pgroup, "VENDOR_LABEL": selected_vendor_label,
-        "MATERIAL_LABEL": selected_material_label, "Root_Cause": selected_root_cause}, selection_name, PERIOD)
+        "MATERIAL_LABEL": selected_material_label, "Root_Cause": selected_root_cause,
+        "Impact_Level": selected_impact}, selection_name, PERIOD)
     st.stop()
 
 # Compute all statistics ONCE (used by all sections and the AI Summary)
