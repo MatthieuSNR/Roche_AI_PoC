@@ -15,6 +15,11 @@ original values back into the English translation (restore). DeepL therefore nev
 * any other number with 6 digits or more (PO, batch),
   also when glued to letters ("PO4500123456")         -> ID_n
 * words containing the company name ("Roche")         -> COMPANY_n
+* quantities: the number before a unit ("50 Stk.", "10,317 pcs")
+  or after "Qty:" / "Menge" (the unit stays, so it is translated) -> QTY_n
+* amounts of money ("1'250 CHF", "€ 30")                -> PRICE_n
+Prices and quantities are the data the project sponsor classified as sensitive (26.10); the rest
+is not confidential, so the other replacements are an additional safeguard.
 
 Placeholders are wrapped in <keep>…</keep> tags and sent with tag_handling="xml" and
 ignore_tags=["keep"], so DeepL copies them unchanged into the translation.
@@ -40,6 +45,18 @@ LONG_NUMBER = re.compile(r"\d{6,}")
 COMPANY = re.compile(r"\w*roche\w*", re.IGNORECASE)
 MIN_NAME_LENGTH = 4  # shorter names ("ABC") would match ordinary words too often
 TAG = re.compile(r"<keep>([A-Z]+_\d+)</keep>")
+NUMBER = r"\d[\d.,']*"
+# Quantity = the number only, so that the unit is still translated ("QTY_1 Stück" -> "QTY_1 pieces")
+UNIT = r"(?:Stück|Stueck|Stk|pieces?|pcs|pc|units?|Einheiten|EA|Teile|parts)(?![A-Za-zÄÖÜäöüß])"
+QUANTITY = re.compile(
+    rf"{NUMBER}(?=\s?{UNIT})"
+    rf"|{NUMBER}(?=(?:\s?\+\s?{NUMBER})+\s?{UNIT})"            # "10 + 80 Stück": both numbers
+    rf"|{NUMBER}(?=\sSt\.)"
+    rf"|(?:(?<=qty )|(?<=qty: )|(?<=qty:)|(?<=quantity )|(?<=quantity: )|(?<=menge )|(?<=menge: )){NUMBER}",
+    re.IGNORECASE)
+CURRENCY = r"(?:€|\$|CHF|EUR|USD|Euro|Franken|Fr\.)"
+PRICE = re.compile(rf"{NUMBER}(?=\s?{CURRENCY}(?![A-Za-z]))"
+                   rf"|(?:(?<=€)|(?<=€ )|(?<=\$)|(?<=\$ )|(?<=CHF )|(?<=EUR )|(?<=USD )|(?<=CHF)|(?<=EUR)|(?<=USD)){NUMBER}")
 
 
 def vendor_names(series: pd.Series) -> list[str]:
@@ -80,7 +97,7 @@ def build_patterns(vendors: list[str], materials: list[str], persons: list[str] 
     materials = sorted({str(m).strip() for m in materials if len(str(m).strip()) >= 5}, key=len, reverse=True)
     if materials:
         patterns.append(("MATERIAL", re.compile(r"(?<![\w])(" + "|".join(map(re.escape, materials)) + r")(?![\w])")))
-    patterns += [("ID", LONG_NUMBER), ("COMPANY", COMPANY)]
+    patterns += [("PRICE", PRICE), ("QTY", QUANTITY), ("ID", LONG_NUMBER), ("COMPANY", COMPANY)]
     return patterns
 
 
@@ -141,7 +158,7 @@ def report(texts: list[str], patterns) -> pd.Series:
 # without "@"). MRP controllers and purchasing groups are short codes: they are replaced
 # in the statistics (exact values) but not searched inside the free-text comments.
 
-ALIAS_LABELS = ("VENDOR", "MRP", "PGROUP", "MATERIAL", "EMAIL", "PERSON", "ID", "COMPANY")
+ALIAS_LABELS = ("VENDOR", "MRP", "PGROUP", "MATERIAL", "EMAIL", "PERSON", "ID", "COMPANY", "QTY", "PRICE")
 ALIAS = re.compile(r"(?<![A-Za-z0-9_])((?:" + "|".join(ALIAS_LABELS) + r")_\d+)(?!\d)")
 NOT_AN_ENTITY = {"Unknown", "Unknown vendor", "None", ""}
 
