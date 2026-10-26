@@ -14,6 +14,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 from llm_summary import (stream_summary, stream_summary_cloud, tidy, is_server_available,
                          is_cloud_configured)
 from pseudonymise import PromptPseudonymiser
+from entries import ENTRY_SEPARATOR
 from stats_engine import compute_stats, root_cause_sources, weekly_active, NO_ROOT_CAUSE
 import ui
 from streamlit_sortables import sort_items
@@ -130,13 +131,13 @@ if "Comment_Expanded" in df.columns:  # built by data_cleaning.py: abbreviations
     TABLE_COLUMNS["Comment_Expanded"] = "Comment (expanded)"
 DEFAULT_COLUMNS = [c for c in TABLE_COLUMNS.values() if c not in ("Original comment", "Comment (expanded)")]
 
-# A comment is a journal: its entries are separated by a line break in the data. A table cell shows
-# one line, so the entries are put one after the other with a marker (newest entry first).
-ENTRY_MARK = "  ▸  "
+# A comment is a journal: its entries are already written one after the other, separated by ENTRY_SEPARATOR
+# (" ¦▸ ", scripts/entries.py), so a table cell shows them on one line as they are.
+ENTRY_MARK = ENTRY_SEPARATOR
 
 
 def inline_entries(series):
-    return series.astype("string").str.replace("\n", ENTRY_MARK, regex=False)
+    return series.astype("string")
 
 
 def load_views():
@@ -517,7 +518,7 @@ with tab3:
     # Count identical comments in the filtered data (same text on several materials / vendors)
     # (a journal with several entries counts each entry on its own)
     with_text = filtered_df.dropna(subset=["Comment_EN"])
-    entries_df = with_text.assign(Comment_EN=with_text["Comment_EN"].astype(str).str.split("\n")).explode("Comment_EN")
+    entries_df = with_text.assign(Comment_EN=with_text["Comment_EN"].astype(str).str.split(ENTRY_SEPARATOR.strip(), regex=False)).explode("Comment_EN")
     entries_df["Comment_EN"] = entries_df["Comment_EN"].str.strip()
     entries_df = entries_df[entries_df["Comment_EN"] != ""]
     top_comments_df = (

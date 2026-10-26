@@ -48,7 +48,8 @@ Roche_AI_PoC/
 │
 ├── scripts/
 │   ├── app.py                   # Streamlit dashboard
-│   ├── data_cleaning.py         # Builds data/cleaned_comments.csv: journal entries split, signatures removed, abbreviations written out
+│   ├── data_cleaning.py         # Builds data/cleaned_comments.csv in six steps (merge, commented rows, journal split, dedup, language, abbreviations)
+│   ├── entries.py               # Separator ' ¦▸ ' between the entries of a comment cell
 │   ├── abbreviations.py         # Reads lexicon/abbreviations.csv, writes abbreviations out, review sheet
 │   ├── translation.py           # Language detection + DeepL translation (Comment_EN), uses the glossary
 │   ├── glossary.py              # Reads lexicon/glossary_de_en.csv, creates/reuses the DeepL glossary

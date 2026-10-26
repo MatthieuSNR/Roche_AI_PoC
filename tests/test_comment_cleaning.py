@@ -32,7 +32,7 @@ def test_signature_chain_is_removed_and_dates_kept():
 def test_several_entries_one_per_line_without_logins():
     p = dc.parse_comment("hottlerj, 2026-03-13: QM Lot aufgelöst\nhottlerj, 2026-03-12: 50 STK in QM Lot")
     assert p["entries"] == ["QM Lot aufgelöst", "50 STK in QM Lot"]
-    assert p["comment"] == "QM Lot aufgelöst\n50 STK in QM Lot"
+    assert p["comment"] == "QM Lot aufgelöst ¦▸ 50 STK in QM Lot"
     assert p["n_entries"] == 2 and p["n_authors"] == 1
     assert "hottlerj" not in p["comment"]
 
@@ -122,8 +122,8 @@ def test_numbers_dots_and_sentence_start():
 
 
 def test_expand_comment_works_entry_by_entry():
-    out = ab.expand_comment("12 Stk. in QM\nAB angefragt\nETA KW34", ["de", "de", "en"], LIB)
-    assert out == "12 Stück in QM\nAuftragsbestätigung angefragt\nEstimated time of arrival calendar week 34"
+    out = ab.expand_comment("12 Stk. in QM ¦▸ AB angefragt ¦▸ ETA KW34", ["de", "de", "en"], LIB)
+    assert out == "12 Stück in QM ¦▸ Auftragsbestätigung angefragt ¦▸ Estimated time of arrival calendar week 34"
 
 
 def test_the_library_file_is_valid_and_consistent():
@@ -147,8 +147,8 @@ def test_real_library_on_typical_entries():
 # ------------------------------------------------------------------ translation entry by entry
 def test_translation_works_entry_by_entry(monkeypatch):
     df = pd.DataFrame({
-        "Comment": ["Vorzug angefragt\nsupplier confirmed", "kein Stockout"],
-        "Comment_Expanded": ["Vorzug angefragt\nsupplier confirmed", "kein Stockout"],
+        "Comment": ["Vorzug angefragt ¦▸ supplier confirmed", "kein Stockout"],
+        "Comment_Expanded": ["Vorzug angefragt ¦▸ supplier confirmed", "kein Stockout"],
         "Entry_Languages": ["de|en", "de"],
         "VENDOR_NAME": ["Acme GmbH", None], "MATERIAL_NUMBER": ["10012345", "10099999"],
     })
@@ -157,7 +157,7 @@ def test_translation_works_entry_by_entry(monkeypatch):
     monkeypatch.setattr(tr, "save_cache", lambda c, marks=None: None)
     monkeypatch.setattr(tr, "load_marks", lambda: {})
     out = tr.add_translations(df, dry_run=True)
-    assert list(out["Comment_EN"]) == ["pull-in requested\nsupplier confirmed", "no stock-out"]
+    assert list(out["Comment_EN"]) == ["pull-in requested ¦▸ supplier confirmed", "no stock-out"]
     assert list(out["comment_language"]) == ["de", "de"]
 
 
@@ -166,7 +166,58 @@ def test_review_sheet_has_three_simple_columns_and_the_entry_language():
                            "expansion_de": "Planlieferzeit", "expansion_en": "planned delivery time",
                            "confidence": "high", "expand": "yes"}])
     library = ab.Library(table)
-    df = pd.DataFrame({"Comment": ["PLZ 30 Tage\nPLZ is 30 days"], "Entry_Languages": ["de|en"]})
+    df = pd.DataFrame({"Comment": ["PLZ 30 Tage ¦▸ PLZ is 30 days"], "Entry_Languages": ["de|en"]})
     sheet = ab.build_sheet(library, df)
     assert sheet.columns.tolist() == ["Abbreviation", "Meaning", "Language"]
     assert sheet.values.tolist() == [["PLZ", "Planlieferzeit", "DE"], ["PLZ", "planned delivery time", "EN"]]
+
+
+# ------------------------------------------------------------------ the cleaning steps one by one
+def _snapshot_dir():
+    import tempfile
+    folder = tempfile.mkdtemp()
+    base = {"MATERIAL_NUMBER": ["M1", "M1", "M2"], "VENDOR_ACCOUNT_NUMBER": ["V1", "V1", "V2"],
+            "VENDOR_NAME": ["ACME", "ACME", "BOLT"], "Impact": ["", "", ""], "Issue": ["Delay", "Delay", None]}
+    for week, comments in {"W1": ["abc12, 2026-03-01: Vorzug angefragt", None, "   "],
+                           "W2": ["abc12, 2026-03-02: abc12, 2026-03-01: Vorzug angefragt\nxyz99, 2026-03-02: ok", None, "ETA KW34"]}.items():
+        table = pd.DataFrame({"Snapshot_Date": [f"2026-03-0{week[-1]}"] * 3, **base, "comment": comments})
+        for column in dc.USEFUL_COLUMNS:        # the other columns of the real snapshots, empty here
+            if column not in table.columns and column not in ("Comment", "Root_Cause"):
+                table[column] = None
+        table.to_csv(os.path.join(folder, f"{week}.csv"), index=False)
+    return folder
+
+
+def test_step1_merge_and_step2_keep_commented():
+    folder = _snapshot_dir()
+    merged = dc.merge_snapshots(folder)
+    assert len(merged) == 6 and "Comment" in merged.columns and "Root_Cause" in merged.columns
+    light = dc.merge_snapshots(folder, commented_only=True)
+    assert light.attrs["rows_total"] == 6 and light.attrs["n_files"] == 2 and len(light) == 4   # NaN rows dropped
+    kept = dc.keep_commented_rows(merged)
+    assert len(kept) == 3 and kept["Comment"].str.strip().ne("").all()                          # blank cell dropped too
+
+
+def test_step3_split_journal_removes_logins_and_marks_the_entries():
+    raw = dc.keep_commented_rows(dc.merge_snapshots(_snapshot_dir()))
+    out = dc.split_journal(raw, keep_raw=True)
+    assert "abc12" in " ".join(out["Comment_Raw"])                       # checking column only
+    assert not out["Comment"].str.contains("abc12|xyz99|2026-03").any()
+    two = out[out["N_Entries"] == 2].iloc[0]
+    assert two["Comment"] == "Vorzug angefragt ¦▸ ok" and two["N_Authors"] == 2
+    assert "Comment_Raw" not in dc.split_journal(raw).columns
+
+
+def test_split_cell_and_join_entries_are_inverse():
+    from entries import join_entries, split_cell
+    assert split_cell(join_entries(["a b", "c", "d"])) == ["a b", "c", "d"]
+    assert split_cell("single") == ["single"]
+
+
+def test_full_build_gives_one_row_per_comment_and_never_keeps_logins():
+    raw = dc.load_commented_rows(_snapshot_dir())
+    out = dc.build_cleaned_comments(raw)
+    assert len(out) == 3                                                  # 'Vorzug angefragt', 'Vorzug angefragt ¦▸ ok', 'ETA KW34'
+    assert out["N_Snapshots"].max() == 1 and "Comment_Expanded" in out.columns
+    assert not out.astype(str).apply(lambda c: c.str.contains("abc12|xyz99")).any().any()
+    assert all(len(l.split("|")) == len(c.split(" ¦▸ ")) for c, l in zip(out["Comment"], out["Entry_Languages"]))

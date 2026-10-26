@@ -131,7 +131,7 @@ def test_stale_entries_are_detected_and_only_redone_on_request():
     assert tr.stale_entries(texts, cache, marks, ENTRIES) == ["Vorzug nicht möglich", "Abriss ab Juli"]
     assert tr.stale_entries(texts, cache, marks, {}) == []
 
-    df = pd.DataFrame({"Comment": ["Vorzug nicht möglich\nAbriss ab Juli"], "Entry_Languages": ["de|de"],
+    df = pd.DataFrame({"Comment": ["Vorzug nicht möglich ¦▸ Abriss ab Juli"], "Entry_Languages": ["de|de"],
                        "MATERIAL_NUMBER": ["1"], "VENDOR_NAME": ["ACME"]})
     real = (tr.load_cache, tr.load_marks, tr.save_cache, gl.load_entries)
     try:

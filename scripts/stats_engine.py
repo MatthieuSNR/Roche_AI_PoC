@@ -10,6 +10,8 @@ filter is active they are compared with the same share over all comments.
 
 import pandas as pd
 
+from entries import ENTRY_SEPARATOR
+
 NO_ROOT_CAUSE = "(no root cause)"
 
 
@@ -27,8 +29,8 @@ def _share_table(series: pd.Series, top: int = 5) -> dict:
 
 
 def _entries(comments: pd.Series) -> pd.Series:
-    """One text per ENTRY of the comments (entries are separated by a line break), without empty ones."""
-    entries = comments.dropna().astype(str).str.split("\n").explode().str.strip()
+    """One text per ENTRY of the comments (entries are separated by ENTRY_SEPARATOR), without empty ones."""
+    entries = comments.dropna().astype(str).str.split(ENTRY_SEPARATOR.strip(), regex=False).explode().str.strip()
     return entries[entries != ""]
 
 

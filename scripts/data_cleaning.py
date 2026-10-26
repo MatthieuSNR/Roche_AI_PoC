@@ -1,24 +1,33 @@
 """
 Data cleaning: builds data/cleaned_comments.csv from the daily snapshots in data/Snapshot_2026/.
 
-One row per unique (material, vendor, comment). A comment stays in the dashboard for many
-days, so instead of keeping only its first appearance we record how long it was visible:
-First_Seen, Last_Seen, N_Snapshots (number of daily snapshots showing it) and Days_Active.
-The other columns (status, root cause, impact...) take their latest known value.
+The cleaning is a sequence of small steps, each one a function that takes a table and returns a table,
+so that every step can be run and checked on its own in scripts/data_cleaning.ipynb:
+
+  1. merge_snapshots        assemble the weekly snapshot CSV files into one table
+  2. keep_commented_rows    keep the rows that carry a comment
+  3. split_journal          cut each comment cell into its entries, remove login + date + time
+  4. deduplicate_comments   one row per (material, vendor, comment) + persistence over the snapshots
+  5. detect_languages       language (de / en) of every entry
+  6. expand_abbreviations   write the certain abbreviations out, according to the language of the entry
+  then scripts/translation.py: 7. pseudonymise -> DeepL (with glossary and cache), entry by entry.
 
 A comment cell is a JOURNAL: the tool writes one entry per line, each signed and dated
 ("login, 2026-06-18: message"), and re-signs an entry every time it is edited, which gives
 chains like "hochwall, 2026-07-16: hochwall, 2026-07-13: ellmersl, 2026-06-26: message".
-Cleaning therefore works entry by entry (parse_comment):
-  1. split the cell into entries (one per signed line; unsigned lines continue the previous entry),
-  2. remove the whole signature chain of each entry (login, date, time): the logins are staff
-     identifiers, i.e. personal data that must neither stay in the text nor be sent to a cloud
-     service (thesis 3.7); only anonymous metadata is kept (number of entries, number of
-     distinct authors, first and last entry date),
-  3. write the entries one per line in the same cell, so that the succession of entries stays
-     visible: "Comment" (original wording) and "Comment_Expanded" (abbreviations written out,
-     scripts/abbreviations.py + lexicon/abbreviations.csv).
-Next steps of the pipeline (scripts/translation.py): pseudonymise -> DeepL, entry by entry.
+Step 3 therefore works entry by entry (parse_comment):
+  * an entry starts at each signature; unsigned lines continue the previous entry,
+  * the whole signature chain is removed: logins are staff identifiers, i.e. personal data that must
+    neither stay in the text nor be sent to a cloud service (thesis 3.7); only anonymous metadata is
+    kept (number of entries, number of distinct authors, first and last entry date),
+  * the entries are written one after the other in the same cell, separated by " ¦▸ " (scripts/entries.py),
+    so that the succession of entries stays visible.
+"Comment" keeps the original wording, "Comment_Expanded" has the abbreviations written out
+(scripts/abbreviations.py + lexicon/abbreviations.csv).
+
+One row per unique (material, vendor, comment). A comment stays in the dashboard for many days, so
+instead of keeping only its first appearance we record how long it was visible: First_Seen, Last_Seen,
+N_Snapshots and Days_Active. The other columns (status, root cause, impact...) take their latest known value.
 
 Usage (from the project root):  python scripts/data_cleaning.py
 Then translate the German comments: python scripts/translation.py
@@ -32,6 +41,8 @@ import sys
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))  # translation.py, abbreviations.py
+
+from entries import ENTRY_SEPARATOR, join_entries, split_cell  # noqa: E402
 
 # Paths (relative to the project root, so the script works from any folder)
 project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -51,7 +62,6 @@ USEFUL_COLUMNS = [
 PERSISTENCE_COLUMNS = ["First_Seen", "Last_Seen", "N_Snapshots", "Days_Active"]
 # Anonymous metadata of the journal (the authors themselves are not kept)
 ENTRY_COLUMNS = ["N_Entries", "N_Authors", "First_Entry_Date", "Last_Entry_Date", "Entry_Languages"]
-ENTRY_SEPARATOR = "\n"   # one entry per line inside the cell
 
 # Signature written by the tool in front of every entry: "login, 2026-06-18: " (optionally with a time).
 # Logins look like hottlerj, peralta4, schera12. Dates seen in the data: ISO (2026-06-18) and, by
@@ -126,7 +136,7 @@ def parse_comment(raw):
     last = [e["dates"][0] for e in entries if e["dates"]]
     return {
         "entries": [e["text"] for e in entries],
-        "comment": ENTRY_SEPARATOR.join(e["text"] for e in entries),
+        "comment": join_entries(e["text"] for e in entries),
         "n_entries": len(entries),
         "n_authors": len({a.lower() for e in entries for a in e["authors"]}),
         "first_entry_date": pd.Series(first, dtype="datetime64[ns]").min() if first else pd.NaT,
@@ -135,40 +145,68 @@ def parse_comment(raw):
 
 
 def clean_comment(text):
-    """Comment without signatures, one entry per line (None if empty). Kept for the notebooks."""
+    """Comment without signatures, entries joined by ENTRY_SEPARATOR (None if empty). Kept for the notebooks."""
     parsed = parse_comment(text)
     return parsed["comment"] if parsed else None
 
 
-def load_commented_rows(snapshot_dir=SNAPSHOT_DIR):
-    """Read every snapshot CSV and keep only the rows that carry a comment."""
+def describe_step(label, before, after):
+    """One line for the log / the notebook: rows before and after a step."""
+    return f"{label}: {len(before):,} -> {len(after):,} rows ({len(after) - len(before):+,})"
+
+
+# ------------------------------------------------------------------ step 1
+def merge_snapshots(snapshot_dir=SNAPSHOT_DIR, commented_only=False):
+    """STEP 1. Assemble the snapshot CSV files into one table (Issue is renamed Root_Cause, comment Comment).
+    commented_only=True keeps only the commented rows while reading (less memory); the number of rows
+    read is then given in table.attrs['rows_total'], the number of files in table.attrs['n_files']."""
     files = sorted(glob.glob(os.path.join(snapshot_dir, "*.csv")))
     if not files:
         raise FileNotFoundError(f"No snapshot CSV found in {snapshot_dir}")
-    parts = []
+    parts, total = [], 0
     for file in files:
         df = pd.read_csv(file, low_memory=False)
-        parts.append(df[df["comment"].notna()])
-    df = pd.concat(parts, ignore_index=True)
-    return df.rename(columns={"Issue": "Root_Cause", "comment": "Comment"})
+        total += len(df)
+        parts.append(df[df["comment"].notna()] if commented_only else df)
+    df = pd.concat(parts, ignore_index=True).rename(columns={"Issue": "Root_Cause", "comment": "Comment"})
+    df.attrs.update(rows_total=total, n_files=len(files))
+    return df
 
 
-def build_cleaned_comments(raw, expand=True):
-    """One row per (material, vendor, comment) with its persistence over the snapshots.
-    expand=True also writes Comment_Expanded (abbreviations written out)."""
-    df = raw.copy()
+# ------------------------------------------------------------------ step 2
+def keep_commented_rows(df):
+    """STEP 2. Keep the rows with a comment (not empty, not only spaces)."""
+    comment = df["Comment"]
+    return df[comment.notna() & (comment.astype(str).str.strip() != "")].copy()
+
+
+# ------------------------------------------------------------------ step 3
+def split_journal(df, keep_raw=False):
+    """STEP 3. Cut every comment cell into its entries and remove the signatures.
+    Comment = entries joined by ENTRY_SEPARATOR; adds N_Entries, N_Authors, First_Entry_Date, Last_Entry_Date.
+    Rows whose comment is only a signature are dropped. keep_raw=True keeps the cell as written in
+    Comment_Raw (it contains the logins: for checking in the notebook only, never saved)."""
+    df = df.copy()
     parsed = {c: parse_comment(c) for c in df["Comment"].dropna().unique()}   # each distinct cell once
     df["_parsed"] = df["Comment"].map(parsed)
+    if keep_raw:
+        df["Comment_Raw"] = df["Comment"]
     df = df.dropna(subset=["_parsed"]).copy()
     df["Comment"] = df["_parsed"].map(lambda p: p["comment"])
     df["N_Entries"] = df["_parsed"].map(lambda p: p["n_entries"])
     df["N_Authors"] = df["_parsed"].map(lambda p: p["n_authors"])
     df["First_Entry_Date"] = pd.to_datetime(df["_parsed"].map(lambda p: p["first_entry_date"]))
     df["Last_Entry_Date"] = pd.to_datetime(df["_parsed"].map(lambda p: p["last_entry_date"]))
-    df = df.drop(columns="_parsed")
+    return df.drop(columns="_parsed")
+
+
+# ------------------------------------------------------------------ step 4
+def deduplicate_comments(df):
+    """STEP 4. One row per (material, vendor, comment) with its persistence over the snapshots
+    (First_Seen, Last_Seen, N_Snapshots, Days_Active). Other columns: latest known value."""
+    df = df.copy()
     df["Snapshot_Date"] = pd.to_datetime(df["Snapshot_Date"], errors="coerce")
     df = df.dropna(subset=["Snapshot_Date"]).sort_values("Snapshot_Date")
-
     key = ["MATERIAL_NUMBER", "VENDOR_ACCOUNT_NUMBER", "Comment"]
     grouped = df.groupby(key, dropna=False, sort=False)
 
@@ -180,33 +218,71 @@ def build_cleaned_comments(raw, expand=True):
     out = latest.join(persistence).join(entry_dates).reset_index()
     out["Days_Active"] = (out["Last_Seen"] - out["First_Seen"]).dt.days + 1
     out["Snapshot_Date"] = out["Last_Seen"]
+    return out
 
-    # Language of each entry (needed to choose the right expansion) and abbreviations written out
+
+# ------------------------------------------------------------------ step 5
+def detect_languages(df):
+    """STEP 5. Language ('de' / 'en') of every entry, detected on the original wording
+    (restricted to English / German, see translation.detect_language). Entry_Languages = "de|en|de"."""
     from translation import detect_language
-    unique = out["Comment"].unique()
-    languages = {c: [detect_language(e) for e in c.split(ENTRY_SEPARATOR)] for c in unique}
-    out["Entry_Languages"] = out["Comment"].map(lambda c: "|".join(languages[c]))
-    columns = USEFUL_COLUMNS
-    if expand:
-        from abbreviations import expand_comment, load_library
-        library = load_library()
-        expanded = {c: expand_comment(c, languages[c], library) for c in unique}
-        out["Comment_Expanded"] = out["Comment"].map(expanded)
-        columns = columns + ["Comment_Expanded"]
+    df = df.copy()
+    languages = {c: [detect_language(e) for e in split_cell(c)] for c in df["Comment"].unique()}
+    df["Entry_Languages"] = df["Comment"].map(lambda c: "|".join(languages[c]))
+    return df
 
-    out = out[columns + PERSISTENCE_COLUMNS + ENTRY_COLUMNS]
+
+# ------------------------------------------------------------------ step 6
+def expand_abbreviations(df):
+    """STEP 6. Comment_Expanded = Comment with the certain abbreviations written out
+    (lexicon/abbreviations.csv: expand = yes and confidence = high), in the language of each entry."""
+    from abbreviations import expand_comment, load_library
+    df = df.copy()
+    library = load_library()
+    languages = df.drop_duplicates("Comment").set_index("Comment")["Entry_Languages"].str.split("|").to_dict()
+    expanded = {c: expand_comment(c, languages[c], library) for c in languages}
+    df["Comment_Expanded"] = df["Comment"].map(expanded)
+    return df
+
+
+def select_output_columns(df):
+    columns = USEFUL_COLUMNS + (["Comment_Expanded"] if "Comment_Expanded" in df.columns else [])
+    out = df[columns + PERSISTENCE_COLUMNS + ENTRY_COLUMNS]
     return out.sort_values(["Last_Seen", "MATERIAL_NUMBER"], ascending=[False, True]).reset_index(drop=True)
 
 
+def load_commented_rows(snapshot_dir=SNAPSHOT_DIR):
+    """Steps 1 + 2: every snapshot read, only the rows that carry a comment kept."""
+    return keep_commented_rows(merge_snapshots(snapshot_dir, commented_only=True))
+
+
+def build_cleaned_comments(raw, expand=True):
+    """Steps 3 to 6 on the commented rows: the table written to cleaned_comments.csv."""
+    df = split_journal(keep_commented_rows(raw))
+    df = detect_languages(deduplicate_comments(df))
+    if expand:
+        df = expand_abbreviations(df)
+    return select_output_columns(df)
+
+
 if __name__ == "__main__":
-    raw = load_commented_rows()
-    cleaned = build_cleaned_comments(raw)
-    print(f"Snapshots: {raw['Snapshot_Date'].nunique()} | commented rows: {len(raw)}")
-    print(f"Unique comments (material, vendor, comment): {len(cleaned)}")
+    merged = merge_snapshots(commented_only=True)
+    raw = keep_commented_rows(merged)
+    print(f"1. merge_snapshots: {merged.attrs['n_files']} files, {merged.attrs['rows_total']:,} rows in total")
+    print(f"2. keep_commented_rows: {len(raw):,} rows with a comment, snapshots: {raw['Snapshot_Date'].nunique()}")
+    split = split_journal(raw)
+    print(describe_step("3. split_journal (signature-only comments dropped)", raw, split))
+    unique = deduplicate_comments(split)
+    print(describe_step("4. deduplicate_comments (material, vendor, comment)", split, unique))
+    unique = detect_languages(unique)
+    print("5. detect_languages (entries):", pd.Series([l for v in unique["Entry_Languages"] for l in v.split("|")]).value_counts().to_dict())
+    unique = expand_abbreviations(unique)
+    print(f"6. expand_abbreviations: {(unique['Comment'] != unique['Comment_Expanded']).sum():,} comments changed")
+    cleaned = select_output_columns(unique)
     print(f"Distinct comment texts: {cleaned['Comment'].nunique()}")
     print(f"Comments with several entries: {(cleaned['N_Entries'] > 1).sum()} "
           f"(max {cleaned['N_Entries'].max()} entries) | entries in total: {cleaned['N_Entries'].sum()}")
 
     cleaned.to_csv(OUTPUT_PATH, index=False)
     print(f"✅ Saved to {OUTPUT_PATH}")
-    print("Next step: python scripts/translation.py (pseudonymises, translates entry by entry: adds Comment_EN)")
+    print("Next step: python scripts/translation.py (7. pseudonymises, translates entry by entry: adds Comment_EN)")

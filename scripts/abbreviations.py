@@ -35,6 +35,9 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from entries import join_entries, split_cell  # noqa: E402
+
 project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 LIBRARY_PATH = os.path.join(project_dir, "lexicon", "abbreviations.csv")
 REVIEW_PATH = os.path.join(project_dir, "data", "interim", "abbreviations_review.csv")
@@ -42,7 +45,6 @@ EVIDENCE_PATH = os.path.join(project_dir, "data", "interim", "abbreviation_evide
 SHEET_PATH = os.path.join(project_dir, "data", "interim", "abbreviations_for_review.xlsx")
 COMMENTS_PATH = os.path.join(project_dir, "data", "cleaned_comments.csv")
 
-ENTRY_SEPARATOR = "\n"
 MATCH_TYPES = {"exact", "ignore_case", "exact_dot", "regex"}
 LETTERS = "A-Za-zÄÖÜäöüß"
 REQUIRED_COLUMNS = ["abbreviation", "match", "pattern", "applies_to", "expansion_de", "expansion_en",
@@ -164,10 +166,10 @@ def expand_text(text, language, library):
 
 def expand_comment(comment, languages, library):
     """Comment = entries separated by a line break; `languages` = one 'de'/'en' per entry."""
-    entries = comment.split(ENTRY_SEPARATOR)
+    entries = split_cell(comment)
     if len(languages) != len(entries):
         languages = (list(languages) + ["en"] * len(entries))[:len(entries)]
-    return ENTRY_SEPARATOR.join(expand_text(e, lang, library) for e, lang in zip(entries, languages))
+    return join_entries(expand_text(e, lang, library) for e, lang in zip(entries, languages))
 
 
 # --------------------------------------------------------------------------------------
@@ -177,7 +179,7 @@ def _entries(df):
     """(entry text, language) pairs of every comment of cleaned_comments.csv."""
     pairs = set()
     for comment, languages in zip(df["Comment"], df["Entry_Languages"]):
-        for entry, lang in zip(str(comment).split(ENTRY_SEPARATOR), str(languages).split("|")):
+        for entry, lang in zip(split_cell(comment), str(languages).split("|")):
             pairs.add((entry, lang))
     return sorted(pairs)
 

@@ -36,6 +36,7 @@ import pandas as pd
 from langdetect import DetectorFactory, detect_langs
 
 import glossary as glossary_module
+from entries import join_entries, split_cell
 from pseudonymise import build_patterns, person_names, pseudonymise, report, restore, vendor_names
 
 project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -44,7 +45,6 @@ CACHE_PATH = os.path.join(project_dir, "data", "interim", "translation_cache.csv
 # Earlier versions of cleaned_comments.csv: their Comment_EN translations are reused
 OLD_TRANSLATED_FILES = [os.path.join(project_dir, "data", "interim", "cleaned_comments_before_rebuild.csv")]
 
-ENTRY_SEPARATOR = "\n"   # one entry per line inside a comment cell
 
 DetectorFactory.seed = 0  # make langdetect reproducible
 
@@ -173,7 +173,7 @@ def entry_languages(df, text_column):
     known = df["Entry_Languages"] if "Entry_Languages" in df.columns else [None] * len(df)
     result = []
     for text, langs in zip(df[text_column], known):
-        entries = str(text).split(ENTRY_SEPARATOR)
+        entries = split_cell(text)
         if isinstance(langs, str) and len(langs.split("|")) == len(entries):
             result.append(langs.split("|"))
         else:
@@ -189,7 +189,7 @@ def add_translations(df, dry_run=False, refresh_glossary=False, use_glossary=Tru
     df["comment_language"] = ["de" if "de" in langs else "en" for langs in languages]
     cache = load_cache()
 
-    entries = [[normalize(e) for e in str(t).split(ENTRY_SEPARATOR)] for t in df[text_column]]
+    entries = [[normalize(e) for e in split_cell(t)] for t in df[text_column]]
     texts = sorted({e for row, langs in zip(entries, languages) for e, lang in zip(row, langs) if lang == "de" and e})
     todo = [t for t in texts if t not in cache]
     print(f"German entries: {len(texts)} distinct texts | already translated: {len(texts) - len(todo)} "
@@ -215,7 +215,7 @@ def add_translations(df, dry_run=False, refresh_glossary=False, use_glossary=Tru
     save_cache(cache, marks)
 
     def translated(row, langs):
-        return ENTRY_SEPARATOR.join(cache.get(e, e) if lang == "de" else e for e, lang in zip(row, langs))
+        return join_entries(cache.get(e, e) if lang == "de" else e for e, lang in zip(row, langs))
     df["Comment_EN"] = [translated(row, langs) for row, langs in zip(entries, languages)]
     return df
 
