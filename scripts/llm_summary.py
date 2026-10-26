@@ -1,6 +1,7 @@
 """
-LLM Summary: generates a natural-language analysis of planner comments
-using a LOCAL model served by LM Studio (OpenAI-compatible API).
+LLM Summary (Smart Analysis): a natural-language analysis of the planner comments, written by
+the Mistral API (cloud, prompt pseudonymised, used by the dashboard) or by a local model served by
+LM Studio (backup: no data leaves the machine). Both are reached through the OpenAI-compatible API.
 
 Architecture: pandas computes the facts (stats dict), the LLM only
 interprets them — it never counts or invents figures.
@@ -23,8 +24,8 @@ from openai import OpenAI
 import config  # noqa: F401  (loads the .env file: MISTRAL_API_KEY)
 
 # LM Studio local server — no data leaves the machine
-LM_STUDIO_BASE_URL = "http://127.0.0.1:1234/v1"
-MODEL_NAME = "mistralai/mistral-7b-instruct-v0.3"
+LM_STUDIO_BASE_URL = os.getenv("LM_STUDIO_BASE_URL") or "http://127.0.0.1:1234/v1"
+MODEL_NAME = os.getenv("LM_STUDIO_MODEL") or "mistralai/mistral-7b-instruct-v0.3"
 # Cloud: Mistral API (OpenAI-compatible). Same family of models as the local one, but hosted
 # by Mistral AI. The key is read from .env or, once deployed, from the Streamlit secrets.
 MISTRAL_BASE_URL = os.getenv("MISTRAL_BASE_URL", "https://api.mistral.ai/v1")

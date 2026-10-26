@@ -15,7 +15,6 @@ data/*.xlsx
 
 # --- Generated outputs ---
 outputs/*
-!outputs/visualization.py
 
 # --- Environments and caches ---
 venv/

@@ -7,7 +7,7 @@ This project aims to **extract actionable insights** for Roche’s planner comme
 - **Provide filters** in a Streamlit dashboard to analyze comments by **supplier, material, or root cause**.
 
 ## 📊 Current Status
-- **Data Cleaning**: the comments of the 174 daily snapshots of `Snapshot_2026` are stored in `data/cleaned_comments.csv`: one row per (material, vendor, comment), with `First_Seen`, `Last_Seen`, `N_Snapshots` and `Days_Active` (how long the comment stayed visible). A comment cell is a **journal** (several dated and signed entries): the entries are split, the signatures (staff logins, dates) removed and kept only as anonymous metadata (`N_Entries`, `N_Authors`, `First_Entry_Date`, `Last_Entry_Date`), and the entries stay one per line in the cell.
+- **Data Cleaning**: the comments of the 174 daily snapshots of `Snapshot_2026` are stored in `data/cleaned_comments.csv`: one row per (material, vendor, comment), with `First_Seen`, `Last_Seen`, `N_Snapshots` and `Days_Active` (how long the comment stayed visible). A comment cell is a **journal** (several dated and signed entries): the entries are split, the signatures (staff logins, dates) removed and kept only as anonymous metadata (`N_Entries`, `N_Authors`, `First_Entry_Date`, `Last_Entry_Date`), and the entries stay in the cell, separated by ` ¦▸ `. The cleaning runs in seven checkable steps, one notebook cell each.
 - **Abbreviation library** (`lexicon/abbreviations.csv`): German and English abbreviations of the comments (LT, PLZ, ETA, STK...) with a proposed meaning, context and confidence; only the certain ones are written out (`Comment_Expanded`) before pseudonymisation and translation. The others wait for the validation by the planners.
 - **DeepL jargon glossary** (`lexicon/glossary_de_en.csv`): German supply-chain terms that DeepL translates inconsistently or wrongly (`Vorzug` → pull-in, `Abriss` → supply gap, `Rückbuchung` → reversal posting). Only validated rows (`use = yes`, confidence high) are uploaded to DeepL; the others are proposals for the planners.
 - **Translation**: German comments are translated to English with DeepL (`Comment_EN`). Every translation is cached in `data/interim/translation_cache.csv`, so a comment is paid for only once.
@@ -16,14 +16,19 @@ This project aims to **extract actionable insights** for Roche’s planner comme
 - **Next Steps**: Deepen NLP analysis (keyword extraction, root cause correlations).
 
 ## 🛠️ Tools & Libraries
-   Tool/Library   | Version   | Purpose                          |
+ | Tool/Library   | Version   | Purpose                          |
  |----------------|-----------|----------------------------------|
  | Python         | 3.12.4    | Primary scripting language       |
- | pandas         | 2.2.3     | Data manipulation                |
- | spaCy          | 3.8.16    | NLP (text preprocessing)         |
+ | pandas         | 2.2.3     | Data manipulation, cleaning pipeline, statistics |
+ | langdetect     | 1.0.9     | Language of every journal entry (DE / EN) |
+ | DeepL API      | 1.32.0    | Translation DE → EN (glossary, cache) |
+ | openpyxl       | 3.1.5     | Excel sheet of the abbreviations for the planners |
+ | spaCy          | 3.8.16    | NLP explorations (tokens, keywords) |
  | Streamlit      | 1.32.0    | Interactive dashboard            |
- | matplotlib     | 3.7.2     | Visualizations                   |
- | seaborn        | 0.12.2    | Statistical plots                |
+ | matplotlib     | 3.8.4     | Charts of the dashboard          |
+ | seaborn        | 0.13.2    | Heatmap of the notebook exploration |
+ | Mistral API / LM Studio | — | Smart Analysis (cloud / local backup) |
+ | pytest         | 9.1.1     | Tests (synthetic data, no network) |
 
 *(See [docs/tools_justification.md](docs/tools_justification.md) for detailed justifications.)*
 
@@ -41,25 +46,28 @@ Roche_AI_PoC/
 │   └── glossary_de_en.csv       # DeepL glossary of German jargon (proposed translations, to be validated)
 │
 ├── docs/
-│   ├── project_steps.md         # Step-by-step methodology
+│   ├── project_steps.md         # Step-by-step methodology (pipeline steps 1 to 7)
+│   ├── project_structure.md     # Every folder and file, and the data flow
 │   └── tools_justification.md   # Tools/libraries justification
 │
-├── outputs/                     # Generated outputs (models, visualizations)
+├── outputs/                     # Local outputs, not pushed (demo teaser)
 │
 ├── scripts/
 │   ├── app.py                   # Streamlit dashboard
-│   ├── data_cleaning.py         # Builds data/cleaned_comments.csv in six steps (merge, commented rows, journal split, dedup, language, abbreviations)
+│   ├── data_cleaning.py         # Pipeline steps 1-6 (merge, commented rows, journal split, dedup, language, abbreviations)
 │   ├── entries.py               # Separator ' ¦▸ ' between the entries of a comment cell
-│   ├── abbreviations.py         # Reads lexicon/abbreviations.csv, writes abbreviations out, review sheet
-│   ├── translation.py           # Language detection + DeepL translation (Comment_EN), uses the glossary
+│   ├── abbreviations.py         # Reads lexicon/abbreviations.csv, writes abbreviations out, Excel sheet for the planners
+│   ├── translation.py           # Step 7: pseudonymise + DeepL translation entry by entry (Comment_EN), glossary, cache
 │   ├── glossary.py              # Reads lexicon/glossary_de_en.csv, creates/reuses the DeepL glossary
 │   ├── stats_engine.py          # All statistics (pandas), used by the dashboard and the LLM
 │   ├── llm_summary.py           # AI summary: Mistral API (cloud) or local LLM (LM Studio)
 │   ├── pseudonymise.py          # Hides names/IDs before text is sent to DeepL or Mistral
 │   ├── config.py                # Reads the API keys from .env
-│   └── *.ipynb                  # Exploration notebooks
+│   ├── data_cleaning.ipynb      # Steps 1-6, one cell per step (+ explorations)
+│   ├── translation.ipynb        # Step 7
+│   └── llm_summary.ipynb        # Statistics, prompt, pseudonymised prompt, cloud / local analysis
 │
-├── tests/                       # pytest tests (journal entries, abbreviations, pseudonymisation, cloud summary)
+├── tests/                       # pytest tests (comment cleaning, glossary, pseudonymisation, cloud summary)
 ├── share.sh                     # Shares the dashboard through an ngrok tunnel (usability tests)
 ├── .env                         # API keys and app password (not pushed to GitHub)
 └── README.md
@@ -86,12 +94,12 @@ Roche_AI_PoC/
    ```bash
    python scripts/data_cleaning.py
    python scripts/abbreviations.py --check --sheet    # validates the library, writes the Excel sheet for the planners (data/interim)
-   python scripts/abbreviations.py --sheet           # simple Excel for the planners: abbreviation, meaning, language (DE/EN)
    python scripts/glossary.py --check        # validates the DeepL glossary
    python scripts/translation.py --dry-run   # characters to send to DeepL + cached translations made without the glossary
    # python scripts/translation.py --refresh-glossary   # (optional) also redo those, costs characters
    python scripts/translation.py
    ```
+   The same steps can be run and checked one by one in `scripts/data_cleaning.ipynb` and `scripts/translation.ipynb` (see [docs/project_steps.md](docs/project_steps.md)). Always translate after a rebuild: the dashboard needs `Comment_EN`.
 
 3. **Launch the Streamlit dashboard** (only on this Mac):
    ```bash

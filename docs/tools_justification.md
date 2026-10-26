@@ -69,20 +69,21 @@ Each choice is grounded in **technical requirements, academic standards, and ind
  | **Industry Standard** | **De facto standard** for data manipulation in Python (used by 80% of data scientists, per [Kaggle Surveys](https://www.kaggle.com/surveys)).                                                           |
  | **Performance**       | Optimized for **large datasets** with C-based backend.                                                                                                                                                         |
  | **Functionality**     | Provides **DataFrame** structure for easy cleaning, filtering, and aggregation.                                                                                                                               |
- | **Integration**       | Works seamlessly with **spaCy, scikit-learn, and matplotlib**.                                                                                                                                                   |
+ | **Integration**       | Works seamlessly with **spaCy, matplotlib and Streamlit**.                                                                                                                                                   |
  | **Academic Use**      | Cited in **thousands of research papers** (e.g., [Nature](https://www.nature.com/), [IEEE](https://ieeexplore.ieee.org/)).                                                                                     |
 
 ### **Key Features Used in the Project**
-- **`pd.read_csv()` + `glob`**: Load the 174 daily snapshots of `data/Snapshot_2026/` (≈2 million rows, only the ≈88,000 commented rows are kept).
-- **`groupby().agg()`**: One row per (material, vendor, comment) with `First_Seen`, `Last_Seen`, `N_Snapshots`, `Days_Active`.
+- **`pd.read_csv()` + `glob`**: Load the 174 daily snapshots of `data/Snapshot_2026/` (≈2 million rows; 87,177 commented rows kept).
+- **One function per cleaning step** (`scripts/data_cleaning.py`): each step takes a DataFrame and returns a DataFrame, so that its result can be checked in a notebook cell.
+- **`groupby().agg()`**: One row per (material, vendor, comment) with `First_Seen`, `Last_Seen`, `N_Snapshots`, `Days_Active` (2,231 comments); a stable sort keeps the "latest value" of each column reproducible.
 - **`to_datetime()`**: Convert snapshot dates to datetime objects (period filters, weekly trends).
 - **`value_counts()` / `groupby()`**: All dashboard statistics (`scripts/stats_engine.py`), e.g. "X% of this vendor's comments have root cause Y".
 
 ### **Alternatives Considered**
  | **Alternative** | **Rejection Reason**                                                                                     |
  |-----------------|-------------------------------------------------------------------------------------------------------|
- | Polars          | Faster but **less mature** and lacks some pandas features (e.g., seamless integration with scikit-learn). |
- | Dask            | Overkill for **medium datasets** (≈2 million snapshot rows, read in ≈15 s; ≈2,300 comments after cleaning). |
+ | Polars          | Faster but **less mature**, and Streamlit, spaCy and the notebooks are built around pandas.             |
+ | Dask            | Overkill for **medium datasets** (≈2 million snapshot rows, read in ≈15 s; ≈2,200 comments after cleaning). |
  | R (data.table)  | Not compatible with **Python-based NLP libraries** like spaCy.                                       |
 
 ### **References**
@@ -105,16 +106,16 @@ Each choice is grounded in **technical requirements, academic standards, and ind
  | **Academic Use**      | Cited in **NLP research** (e.g., [ACL Anthology](https://aclanthology.org/)).                                                                                                                                     |
 
 ### **Key Features Used in the Project**
-- **Tokenization**: Split text into words/tokens.
-- **Lemmatization**: Reduce words to their base form (e.g., "ruptures" → "rupture").
-- **Stop Word Removal**: Filter out common words (e.g., "the", "und").
-- **Keyword analysis by root cause** (exploration notebook `data_cleaning.ipynb`).
+Used in the explorations of `data_cleaning.ipynb` (A: tokens, B: keywords by root cause), not in the pipeline that builds the comments file:
+- **Tokenization and lemmatization** entry by entry, with the model of the language detected in step 5 (`de_core_news_sm` or `en_core_web_sm`), on `Comment_Expanded` (e.g., "Lieferungen" → "Lieferung").
+- **Stop word removal**: Filter out common words (e.g., "the", "und").
+- **Keyword analysis by root cause**: the most frequent lemmas of each root cause.
 
 ### **Alternatives Considered**
  | **Alternative**       | **Rejection Reason**                                                                                     |
  |-----------------------|-------------------------------------------------------------------------------------------------------|
  | NLTK                  | **Slower** and less optimized for German.                                                             |
- | Hugging Face Transformers | Overkill for **simple NLP tasks** (e.g., root cause extraction). Requires GPU for large models. |
+ | Hugging Face Transformers | Overkill for **simple NLP tasks** (tokens, keywords). Requires GPU for large models. |
  | Stanford NLP          | **Java-based**, not compatible with Python workflows.                                               |
 
 ### **References**
@@ -137,8 +138,9 @@ Each choice is grounded in **technical requirements, academic standards, and ind
  | **Detection accuracy** | `langdetect` alone labelled short German comments as Hungarian, Catalan, Norwegian… (≈12 %), and these were never translated. Detection is therefore **restricted to English/German**, with a small German lexicon as fallback. |
 
 ### **Key Features Used in the Project** (`scripts/translation.py`)
-- **`detect_langs()`**: Language probabilities, reduced to `en` / `de`.
-- **`Translator.translate_text()`**: Batch translation (50 comments per call), with retry on rate limit.
+- **`detect_langs()`**: Language probabilities, reduced to `en` / `de`, computed **per journal entry** (a cell can mix German and English entries) and **before** the abbreviations are written out (pipeline step 5), because an abbreviation can have another meaning in each language. Known limit: short mixed entries (e.g., "via SafetyStock gedeckt") can be labelled English.
+- **`Translator.translate_text()`**: Batch translation (50 entries per call), with retry on rate limit; German entries only, pseudonymised, after the abbreviations are written out (pipeline step 7).
+- **Glossary** (`lexicon/glossary_de_en.csv`, `scripts/glossary.py`): German supply-chain jargon with a fixed English term (`Vorzug` → pull-in); created once on DeepL and reused while its content does not change.
 - **`Translator.get_usage()`**: Monthly character usage, printed after each run.
 
 ### **Alternatives Considered**
@@ -250,7 +252,7 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
  | **Criteria**          | **Justification**                                                                                                                                                                                                 |
  |-----------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
  | **Ease of Use**       | **No frontend development** required. Write Python scripts and get a **fully interactive web app**.                                                                                                             |
- | **Integration**       | Works with **pandas, matplotlib, and scikit-learn** out of the box.                                                                                                                                               |
+ | **Integration**       | Works with **pandas and matplotlib** out of the box.                                                                                                                                               |
  | **Deployment**        | Free hosting on [Streamlit Cloud](https://streamlit.io/cloud) is possible, but not used with the confidential data (see section 12).                                                                                                                                             |
  | **Industry Adoption** | Widely used by **data science teams** for internal prototypes (acquired by Snowflake in 2022).                                                                                                                      |
  | **Academic Use**      | Increasingly used in **research** for sharing interactive results (e.g., [arXiv](https://arxiv.org/)).                                                                                                         |
@@ -262,7 +264,7 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
 - **Folding sidebar**: Views, Filters and Timeframe are menus that fold (`st.expander`, fixed titles without emojis), so every filter fits on one screen without scrolling (feedback from the first remote test).
 - **One scrolling page**: an overview (ION material status tiles) followed by 7 analysis sections (comments, root causes, frequent comments, root cause details, trends, statistics, Smart Analysis), with a menu that stays at the top of the page to jump to a section.
 - **DataFrames**: Display cleaned data and results.
-- **Plots**: Render matplotlib/seaborn visualizations.
+- **Plots**: Render matplotlib figures (seaborn is only used in the notebook explorations).
 - **`st.cache_data`**: The comments file is read once, not at every click.
 - **Theme + custom CSS** (`.streamlit/config.toml`, `scripts/ui.py`): a look close to the existing Roche **ION Material Availability** dashboard (Roche logo, blue panel headers, square corners, material status tiles), so planners recognise the tool. The logo is in `assets/roche_logo.png`.
 
@@ -338,20 +340,21 @@ Each folder and file has a **clear purpose**, making the project **easy to maint
    **Folder/File**       | **Purpose**                                                                                     | **Justification**                                                                                                                                                                                                 |
  |-----------------------|-------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
  | `data/`               | **Input data**: daily snapshots, cleaned comments, translation cache (never pushed to GitHub)   | **Separation of concerns**: Raw data is isolated from scripts and outputs to avoid confusion.                                                                                                               |
- | `scripts/`            | **Python scripts** for the PoC (cleaning, NLP, visualization, dashboard)                          | **Modularity**: Each script has a **single responsibility**: `data_cleaning.py` (build the comments file), `translation.py` (DeepL), `abbreviations.py` (abbreviation library, written out before translation), `pseudonymise.py` (hides names before DeepL / Mistral), `stats_engine.py` (statistics), `llm_summary.py` (Smart Analysis), `ui.py` (layout), `app.py` (dashboard). |
- | `tests/`              | **pytest tests** (pseudonymisation, cloud summary)                                              | **Trust**: the privacy guarantee (no real name in the request) is checked automatically, with fake API clients and no Roche data. |
+ | `scripts/`            | **Python scripts and notebooks** of the PoC (pipeline, dashboard, Smart Analysis)                 | **Modularity**: Each script has a **single responsibility**: `data_cleaning.py` (pipeline steps 1-6), `entries.py` (separator of the journal entries), `abbreviations.py` (abbreviation library), `translation.py` + `glossary.py` (step 7, DeepL), `pseudonymise.py` (hides names before DeepL / Mistral), `stats_engine.py` (statistics), `llm_summary.py` (Smart Analysis), `ui.py` (layout), `app.py` (dashboard). One notebook per stage (`data_cleaning`, `translation`, `llm_summary`) runs the functions of the scripts step by step, without duplicating code. |
+| `lexicon/`            | **Reference tables**: abbreviation library, DeepL glossary                                       | **Traceability**: versioned in Git, free of real comments; the planners validate them, the pipeline reads them. Files generated from the data stay in `data/interim/`. |
+ | `tests/`              | **pytest tests** (comment cleaning, glossary, pseudonymisation, cloud summary)                  | **Trust**: the privacy guarantee (no real name in the request) is checked automatically, with fake API clients and no Roche data. |
  | `assets/`, `.streamlit/` | **Roche logo, favicon, theme**                                                               | **Recognition**: a look close to the existing ION dashboard, kept out of the code. |
  | `share.sh`            | **Shares the dashboard through ngrok** (usability tests)                                         | **Control**: one command, refuses to start without a password (section 12). |
- | `outputs/`            | **Generated outputs** (e.g., cleaned data, visualizations, models)                              | **Reproducibility**: Outputs are saved separately to avoid overwriting and to track progress.                                                                                                                                 |
+ | `outputs/`            | **Local outputs** (e.g., demo teaser), not pushed                                               | **Separation**: material made for presentations stays apart from code and data.                                                                                                                                 |
  | `venv/`               | **Virtual environment** for Python dependencies                                                | **Isolation**: Ensures dependencies (e.g., `spaCy 3.8.16`) do not conflict with other projects or system-wide Python.                                                                                              |
- | `docs/`               | **Project documentation** (this file, `project_steps.md`, `projected_project_structure.md`)                                | **Clarity**: Centralizes all documentation for easy reference by stakeholders (e.g., Roche team) and for your thesis.                                                                                              |
+ | `docs/`               | **Project documentation** (this file, `project_steps.md`, `project_structure.md`)                                | **Clarity**: Centralizes all documentation for easy reference by stakeholders (e.g., Roche team) and for your thesis.                                                                                              |
  | `requirements.txt`    | **List of Python dependencies**                                                               | **Reproducibility**: Allows others to recreate the exact same environment using `pip install -r requirements.txt`.                                                                                                         |
  | `README.md`           | **Project overview and instructions**                                                          | **Onboarding**: Helps new users (e.g., Roche stakeholders or thesis reviewers) understand how to run the project.                                                                                                  |
 
 ---
 ### **How the Structure Supports the PoC Goals**
 1. **Clarity**:
-   - Each folder/file has a **clear name and purpose** (e.g., `nlp_pipeline.py` for NLP tasks).
+   - Each folder/file has a **clear name and purpose** (e.g., `translation.py` for step 7); files that no longer serve are removed (26 Oct.: an early French spaCy matcher, its plot script and an empty notebook; they stay in the Git history).
    - **Easy to navigate** for both developers and stakeholders.
 
 2. **Reproducibility**:
@@ -359,7 +362,7 @@ Each folder and file has a **clear purpose**, making the project **easy to maint
    - **Scripts can be re-run** at each new snapshot delivery (see `docs/project_steps.md`).
 
 3. **Scalability**:
-   - **Modular scripts** (e.g., `data_cleaning.py`, `nlp_pipeline.py`) can be **extended or replaced** without affecting the entire project.
+   - **Modular scripts** (e.g., `data_cleaning.py`, `translation.py`) can be **extended or replaced** without affecting the entire project; a cleaning step is a function that can be changed and re-checked on its own.
    - **Outputs are separated** from inputs, making it easy to **add new data or scripts**.
 
 4. **Collaboration**:
@@ -421,16 +424,39 @@ Each folder and file has a **clear purpose**, making the project **easy to maint
 ### **Why pytest?**
  | **Criteria**          | **Justification** |
  |-----------------------|-------------------|
- | **Need**              | The main promise of the cloud analysis is a negative one (no real name leaves the machine). It is checked by tests rather than by a one-off look at the prompt. |
+ | **Need**              | Two promises are negative ones: no login stays in the cleaned comments, and no real name leaves the machine. They are checked by tests rather than by a one-off look at the data. The cleaning rules (signature chains, typos, `n/a`) are also fixed by tests, so a change in one rule does not silently break another. |
  | **No dependency on data or network** | The tests use a small synthetic table and a fake API client (`tests/test_cloud_summary.py`), so they run without Roche data, without a Mistral key and offline. |
  | **Simplicity**        | Plain functions with `assert`; `python -m pytest -q tests`. |
 
 ### **What Is Tested**
+- `tests/test_comment_cleaning.py`: journal entries and signatures (chains, typos, signature in a line, `n/a`), snapshot merge (partial week skipped), one row per comment without login, abbreviations by language, entry-by-entry translation.
+- `tests/test_glossary.py`: validation of the glossary, whole-word case-sensitive matching, glossary created once and reused, stale translations redone only on request.
 - `tests/test_pseudonymise.py`: identifying elements are replaced and restored; the same value gets the same placeholder (DeepL path).
 - `tests/test_cloud_summary.py`: the request of the Smart Analysis contains no real supplier, MRP controller, purchasing group, material number or e-mail; a supplier gets the same alias in the statistics and in the comments; aliases of the streamed answer (even split across chunks) are replaced by the real names; the local prompt is unchanged.
 
 ### **Limits**
-The tests do not call the real Mistral API and do not evaluate the quality of the analysis; the detection limits of section 5 (abbreviated names, person names) are not covered.
+The tests do not call the real DeepL or Mistral API and do not evaluate the quality of the translation or of the analysis; the detection limits of section 5 (abbreviated names, person names) are not covered.
 
 ### **References**
 - [pytest Documentation](https://docs.pytest.org/)
+
+---
+
+---
+
+## **📌 14. Excel Sheet for the Planners: openpyxl (v3.1.5)**
+
+### **Why?**
+ | **Criteria**          | **Justification** |
+ |-----------------------|-------------------|
+ | **Need**              | The planners validate the abbreviation library. They work in Excel, not in a CSV with twelve technical columns: `data/interim/abbreviations_for_review.xlsx` has three columns (abbreviation, meaning, language of the entries where it appears). |
+ | **Simplicity**        | `pandas.ExcelWriter(engine="openpyxl")` writes the sheet; openpyxl only adds a bold header, column widths and a frozen first row (`abbreviations.write_sheet`). |
+
+### **Alternatives Considered**
+ | **Alternative** | **Rejection Reason** |
+ |-----------------|----------------------|
+ | CSV             | Opens in Excel, but with encoding and separator problems for umlauts and commas; no layout. |
+ | XlsxWriter      | Equivalent for writing; openpyxl can also read the sheet back once the planners have filled it. |
+
+### **References**
+- [openpyxl Documentation](https://openpyxl.readthedocs.io/)
