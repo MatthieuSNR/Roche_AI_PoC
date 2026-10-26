@@ -460,3 +460,36 @@ The tests do not call the real DeepL or Mistral API and do not evaluate the qual
 
 ### **References**
 - [openpyxl Documentation](https://openpyxl.readthedocs.io/)
+
+---
+
+---
+
+## **📌 15. Insights Lab: scikit-learn (v1.4.2) + SciPy (v1.17.1)**
+
+### **Why?**
+ | **Criteria**          | **Justification** |
+ |-----------------------|-------------------|
+ | **Need**              | Group near-identical comments (US24), measure the link between root cause and impact, and test whether early comments announce an impact (weak signals), with figures rather than impressions. |
+ | **Explainability**    | TF-IDF of character n-grams (similarity of wordings), logistic regression (weights per word) and statistical tests give a reason for every result: why two comments were grouped, which words raise the risk, how likely a difference is to be chance. |
+ | **Fit to the data**   | Comments are short and code-like (px13, LT, svc). Usuga-Cadavid et al. found classic models as good as transformers on such texts (their Company C), with far less effort and no GPU. |
+ | **Honest evaluation** | 5-fold stratified cross-validation and the Matthews correlation coefficient (MCC), which stays meaningful when severe impacts are rare (10% of the items), as in the reference paper. |
+
+### **Key Features Used in the Project** (`scripts/insights.py`)
+- **`TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5))`** + cosine similarity: similar wordings, robust to typos and plural forms; merges also require the same main root cause.
+- **`CountVectorizer`** + **`scipy.stats.fisher_exact`**: words of the first comment followed by a severe impact more often than average (lift, one-sided test).
+- **`LogisticRegression(class_weight="balanced")`**, **`StratifiedKFold`**, **`matthews_corrcoef`**, **`roc_auc_score`**: can the first comment (and its root cause) predict a Production / Market impact? Out-of-fold probabilities rank the open items of the watch list.
+- **`scipy.stats.chi2_contingency`** + Cramér's V: independence of root cause and impact.
+
+### **Alternatives Considered**
+ | **Alternative** | **Rejection Reason** |
+ |-----------------|----------------------|
+ | Multilingual sentence embeddings (e.g. `sentence-transformers`) | Would also group synonyms written differently (*expedite* / *pull-in*), but ~1 GB of dependencies, a model download, and merges harder to explain. Kept as the next step if the planners need it. |
+ | Fine-tuned transformers (BERT family), as in the reference paper | Too few labelled items (126 severe impacts) to fine-tune reliably; no gain expected on code-like texts. |
+ | Topic models (LDA) | Topics are hard to name on very short comments; used only as a baseline in the reference paper. |
+
+### **References**
+- [scikit-learn Documentation](https://scikit-learn.org/stable/)
+- [SciPy statistics](https://docs.scipy.org/doc/scipy/reference/stats.html)
+- Usuga-Cadavid, J. P., Lamouri, S., Grabot, B., Fortin, A.: *Using deep learning to value free-form text data for predictive maintenance*, International Journal of Production Research.
+

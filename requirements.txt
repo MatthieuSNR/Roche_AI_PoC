@@ -2,6 +2,8 @@
 pandas>=2.2
 numpy>=1.26
 matplotlib>=3.8
+scikit-learn>=1.4      # Insights Lab: grouping of similar comments, weak-signal model
+scipy>=1.11            # Insights Lab: chi-square and Fisher tests
 seaborn>=0.13          # heatmap of the exploration C (data_cleaning.ipynb)
 streamlit>=1.32
 streamlit-sortables>=0.3   # drag and drop of the table columns

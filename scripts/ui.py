@@ -107,6 +107,12 @@ div[data-testid="stVerticalBlock"] > div:has(.ion-nav) {{ position: sticky; top:
 .ion-nav a:hover {{ background: #E8F0FE; }}
 .ion-nav a.active {{ background: {ION_BLUE}; color: #fff !important; }}
 .emo {{ margin-right: 6px; }}
+/* Second row of the menu: the new pages being validated (Insights Lab) */
+.ion-nav.lab {{ border-top: none; background: #F8FAFD; align-items: center; }}
+.ion-nav .lab-tag {{
+  font-size: .74rem; font-weight: 600; color: {ION_BLUE}; text-transform: uppercase; letter-spacing: .03em;
+  padding: 6px 10px 6px 8px; border-right: 1px solid #D6DCE5; margin-right: 4px;
+}}
 .ion-anchor {{ scroll-margin-top: {BAR_HEIGHT + 70}px; height: 0; }}
 /* the invisible scroll-spy iframe takes no space */
 div[data-testid="element-container"]:has( iframe[height="0"]) {{ display: none; }}
@@ -181,17 +187,27 @@ def _label(text):
     return html.escape(text)
 
 
-def top_bar(title, subtitle, sections, tag="AI PoC"):
+def top_bar(title, subtitle, sections, tag="AI PoC", lab_pages=(), lab_label="", current_page=""):
     """Blue title bar + navigation menu. sections = [(anchor_id, label)]: clicking a label
-    scrolls down to that section; the menu stays visible at the top of the page."""
+    scrolls down to that section; the menu stays visible at the top of the page.
+    lab_pages = [(page_id, label)]: second row of the menu, links to the new pages (?page=page_id);
+    on such a page (current_page), the first row leads back to the sections of the main page."""
     st.markdown(
         f'<div class="ion-topbar"><div class="brand">{_logo_html()}'
         f'<span>{html.escape(title)}</span><span class="sub">{html.escape(subtitle)}</span>'
         f'<span class="tag">{html.escape(tag)}</span></div></div>',
         unsafe_allow_html=True,
     )
-    links = "".join(f'<a href="#{a}" target="_self" data-target="{a}">{_label(label)}</a>' for a, label in sections)
-    st.markdown(f'<div class="ion-nav">{links}</div>', unsafe_allow_html=True)
+    if current_page:   # a new page: the sections are on the main page (no scroll spy here)
+        links = "".join(f'<a href="./#{a}" target="_self">{_label(label)}</a>' for a, label in sections)
+    else:
+        links = "".join(f'<a href="#{a}" target="_self" data-target="{a}">{_label(label)}</a>' for a, label in sections)
+    lab = ""
+    if lab_pages:
+        lab_links = "".join(f'<a href="?page={p}" target="_self" class="{"active" if p == current_page else ""}">'
+                            f'{html.escape(label)}</a>' for p, label in lab_pages)
+        lab = f'<div class="ion-nav lab"><span class="lab-tag">{html.escape(lab_label)}</span>{lab_links}</div>'
+    st.markdown(f'<div class="ion-nav-wrap"><div class="ion-nav">{links}</div>{lab}</div>', unsafe_allow_html=True)
 
 
 SCROLL_SPY_JS = """
@@ -410,10 +426,8 @@ def ai_loading_screen(steps, total, sub, comments, step_ms=900, height=380):
     components.html(LOADING_HTML.replace("__DATA__", payload), height=height)
 
 
-SECTION_ICONS = {
-    "key findings": "🔎", "trend over time": "📈", "where the issues come from": "🏭",
-    "risks to escalate": "⚠️", "recommended actions": "✅",
-}
+SECTION_NAMES = {"key findings", "trend over time", "where the issues come from", "risks to escalate",
+                 "recommended actions"}
 
 
 def _inline(text):
@@ -430,11 +444,10 @@ def summary_to_html(text):
         if not line:
             continue
         name = re.sub(r"^#+\s*|\*\*|:$", "", line).strip().rstrip(":").strip()
-        if line.startswith("#") or name.lower() in SECTION_ICONS:
+        if line.startswith("#") or name.lower() in SECTION_NAMES:
             if in_list:
                 out.append("</ul>"); in_list = False
-            icon = SECTION_ICONS.get(name.lower(), "•")
-            out.append(f'<h4><span class="emo">{icon}</span>{html.escape(name)}</h4>')
+            out.append(f'<h4>{html.escape(name)}</h4>')
             continue
         bullet = re.match(r"^(?:[-*•]|\d+[.)])\s+(.*)", line)
         if bullet:

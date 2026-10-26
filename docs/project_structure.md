@@ -15,7 +15,8 @@ Roche_AI_PoC/
 │   │   ├── abbreviations_for_review.xlsx  # Sheet for the planners: abbreviation, meaning, language
 │   │   ├── abbreviation_evidence.csv      # Real excerpts that justify the proposed meanings (read by --report)
 │   │   └── saved_views.json               # Saved views of the dashboard
-│   └── cleaned_comments.csv       # One row per (material, vendor, comment): cleaned, expanded, translated
+│   ├── cleaned_comments.csv       # One row per (material, vendor, comment): cleaned, expanded, translated
+│   └── item_tracking.csv          # One row per (day, material, vendor) from ALL snapshot rows (Insights Lab)
 │
 ├── lexicon/                       # Versioned reference tables, no real comment in them
 │   ├── abbreviations.csv          # Library of abbreviations (DE / EN), proposed meanings, to be validated by the planners
@@ -33,6 +34,10 @@ Roche_AI_PoC/
 │   ├── app.py                     # Streamlit dashboard (one scrolling page, password page when shared)
 │   ├── ui.py                      # Layout: ION-like look, top menu, loading screen, result card
 │   ├── stats_engine.py            # All statistics (pandas), used by the dashboard and the LLM
+│   │   # --- Insights Lab (new pages, second row of the menu, to validate)
+│   ├── tracking.py                # Builds data/item_tracking.csv from all snapshot rows
+│   ├── insights.py                # Grouping of similar comments, trends, root cause x impact, weak signals
+│   ├── insights_pages.py          # The four new pages (Streamlit)
 │   ├── llm_summary.py             # Smart Analysis: Mistral API (cloud) or LM Studio (local backup)
 │   ├── config.py                  # Reads the keys from .env
 │   │   # --- Notebooks: run each step and check its result
@@ -44,7 +49,8 @@ Roche_AI_PoC/
 │   ├── test_comment_cleaning.py   # Journal entries, signatures, snapshot merge, abbreviations, entry-by-entry translation
 │   ├── test_glossary.py           # DeepL glossary: validation, hash, refresh of stale translations
 │   ├── test_pseudonymise.py       # Placeholders replaced and restored (DeepL path)
-│   └── test_cloud_summary.py      # No real name in the Mistral request, aliases restored in the answer
+│   ├── test_cloud_summary.py      # No real name in the Mistral request, aliases restored in the answer
+│   └── test_insights.py           # Grouping rules, tracking table, status change, root cause x impact, weak signals
 │
 ├── docs/
 │   ├── project_steps.md           # Methodology, step by step, and data update procedure
@@ -63,6 +69,7 @@ Roche_AI_PoC/
 ### **Key Notes:**
 - **Data flow**: `Snapshot_2026/` → `data_cleaning.py` (steps 1-6, with `entries.py`, `abbreviations.py` + `lexicon/abbreviations.csv`) → `cleaned_comments.csv` → `translation.py` (step 7, with `pseudonymise.py`, `glossary.py`, the cache) → `Comment_EN` → `stats_engine.py` → `app.py` → `llm_summary.py` (Smart Analysis).
 - **One function per cleaning step**, one notebook cell per step: the result of every step can be checked on its own. The notebooks call the functions of the scripts, they do not duplicate code.
+- **Insights Lab**: `Snapshot_2026/` → `tracking.py` → `item_tracking.csv` → `insights.py` → `insights_pages.py`, drawn by `app.py` when the URL has `?page=...`. The main page stays unchanged until a new page is validated.
 - **`stats_engine.py` is the single source of figures**: the dashboard displays them and the LLM only receives them, so the LLM never computes anything.
 - **`lexicon/` vs `data/interim/`**: `lexicon/` holds the reference tables, versioned and free of real comments; `data/interim/` holds files generated from the confidential data, never pushed.
 - **`scripts/` is flat on purpose**: a modular `src/` package was tried and set aside (history of the repository); a flat folder lets the notebooks import the modules without installation.

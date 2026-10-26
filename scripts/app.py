@@ -17,16 +17,17 @@ from pseudonymise import PromptPseudonymiser
 from entries import ENTRY_SEPARATOR
 from stats_engine import compute_stats, root_cause_sources, weekly_active, NO_ROOT_CAUSE
 import ui
+import insights_pages
 from streamlit_sortables import sort_items
 
 
 
-# Browser tab icon: the Roche logo in blue (assets/favicon.png), an emoji if the file is missing
+# Browser tab icon: the Roche logo in blue (assets/favicon.png), Streamlit's default if the file is missing
 FAVICON_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "assets", "favicon.png")
 
 st.set_page_config(
     page_title="Roche AI PoC - NLP Insights",
-    page_icon=FAVICON_PATH if os.path.exists(FAVICON_PATH) else "🔷",
+    page_icon=FAVICON_PATH if os.path.exists(FAVICON_PATH) else None,
     layout="wide",
 )
 ui.apply_style()  # Look of the Roche ION Material Availability dashboard (scripts/ui.py)
@@ -103,17 +104,21 @@ for col in ["Snapshot_Date", "First_Seen", "Last_Seen"]:
 
 # Title + navigation menu (each entry scrolls down to its section; all sections follow each other)
 SECTIONS = [
-    ("overview", "🏠 Overview"),
-    ("filtered-comments", "💬 Filtered Comments"),
-    ("top-root-causes", "🔥 Top Root Causes"),
-    ("frequent-comments", "📊 Most Frequent Comments"),
-    ("root-cause-details", "🔎 Comments for a Root Cause"),
-    ("trends", "📈 Root Cause Trends"),
-    ("key-statistics", "📋 Key Statistics"),
-    ("ai-summary", "💡 Smart Analysis"),
+    ("overview", "Overview"),
+    ("filtered-comments", "Filtered Comments"),
+    ("top-root-causes", "Top Root Causes"),
+    ("frequent-comments", "Most Frequent Comments"),
+    ("root-cause-details", "Comments for a Root Cause"),
+    ("trends", "Root Cause Trends"),
+    ("key-statistics", "Key Statistics"),
+    ("ai-summary", "Smart Analysis"),
 ]
 SECTION_TITLES = dict(SECTIONS)
-ui.top_bar("Material Availability", "Insights from Planner Comments", SECTIONS)
+# New pages being validated (Insights Lab, scripts/insights_pages.py): second row of the menu, ?page=...
+PAGE = st.query_params.get("page", "")
+PAGE = PAGE if PAGE in dict(insights_pages.PAGES) else ""
+ui.top_bar("Material Availability", "Insights from Planner Comments", SECTIONS,
+           lab_pages=insights_pages.PAGES, lab_label=insights_pages.LAB_LABEL, current_page=PAGE)
 ui.scroll_spy()  # menu entry of the section on screen in blue
 
 # --- Saved views (like SAP "personalised views"): filters + table columns under a name ---
@@ -315,11 +320,18 @@ selection_parts = [p for p in [selection_label(selected_mrp), selection_label(se
                                selection_label(selected_root_cause), selection_label(selected_impact)] if p]
 selection_name = " / ".join(selection_parts) if selection_parts else "All comments"
 
+# A page of the Insights Lab: drawn with the same filters, then nothing else of the main page
+if PAGE:
+    insights_pages.render(PAGE, df, filtered_df, {
+        "MRP_CONTROLLER": selected_mrp, "PURCHASING_GROUP": selected_pgroup, "VENDOR_LABEL": selected_vendor_label,
+        "MATERIAL_LABEL": selected_material_label, "Root_Cause": selected_root_cause}, selection_name)
+    st.stop()
+
 # Compute all statistics ONCE (used by all sections and the AI Summary)
 stats = compute_stats(filtered_df, df)
 
 # ================= OVERVIEW =================
-ui.section("overview", "🏠 Overview — " + selection_name)
+ui.section("overview", "Overview — " + selection_name)
 
 # --- Headline: where the selection stands among all comments ---
 if stats["total_comments"] > 0:
@@ -724,12 +736,12 @@ with tab6:
         col_a, col_b = st.columns(2)
         if stats.get("causes_increasing"):
             with col_a:
-                st.markdown("**📈 Increasing (first → last week)**")
+                st.markdown("**Increasing (first → last week)**")
                 for cause, delta in stats["causes_increasing"].items():
                     st.caption(f"- {cause}: **+{delta}**")
         if stats.get("causes_decreasing"):
             with col_b:
-                st.markdown("**📉 Decreasing (first → last week)**")
+                st.markdown("**Decreasing (first → last week)**")
                 for cause, delta in stats["causes_decreasing"].items():
                     st.caption(f"- {cause}: **{delta}**")
 
@@ -867,7 +879,7 @@ def render_ai_summary(mode: str):
     saved = st.session_state.get(session_key)
     if saved:
         if saved[0] != filter_key:
-            st.caption("⚠️ Analysis generated with different filters.")
+            st.caption("Note: analysis generated with different filters.")
         ui.ai_result(saved[1], f"{saved[2]} · based on {saved[3]} comments · generated {saved[4]}"
                                + ("" if cloud else f" with {saved[5]} · figures computed by pandas"))
 

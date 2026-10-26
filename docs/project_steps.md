@@ -94,11 +94,22 @@ Steps 1 to 6: `scripts/data_cleaning.py` and `data_cleaning.ipynb`; step 7: `scr
 - **Limits**: one shared password, link changes at each start, third party (ngrok) in the path: acceptable for a short test, not for production. Details in `tools_justification.md`, section 12.
 
 ## 📌 Part F: Tests
-- **Actions**: `python -m pytest -q tests` (40 tests), synthetic data only, fake API clients: no network, no key, no Roche data.
+- **Actions**: `python -m pytest -q tests` (46 tests), synthetic data only, fake API clients: no network, no key, no Roche data.
   - `test_comment_cleaning.py`: journal entries and signatures (chains, typos, `n/a`), snapshot merge (partial week skipped), abbreviations by language, entry-by-entry translation, `Comment_EN` from the cache when saving (no DeepL call), no login in the output.
   - `test_glossary.py`: validation of the glossary, creation and reuse on DeepL, stale translations redone only on request.
   - `test_pseudonymise.py`: identifying elements replaced and restored (DeepL path).
   - `test_cloud_summary.py`: no real name in the Mistral request, aliases restored in the streamed answer.
+
+## 📌 Part G: Insights Lab (new pages, to validate)
+- **Objective**: answer the feedback of the tool owner (Johannes Höttler, demo of 23.10: US24 similar comments counted as one issue, US25 problem vs latest entry of a journal, US26 explain weekly changes, root cause × impact) and look for weak signals. The new pages sit in a **second row of the top menu** (`?page=...`); the existing page is unchanged until a new page is validated and replaces its section. The sidebar filters apply to them too.
+- **Tracking table** (`scripts/tracking.py` → `data/item_tracking.csv`): built from **all** snapshot rows, not only the commented ones. One row per (snapshot day, material, vendor) when the item has a root cause, an impact, a comment or a stock-out status (143,569 item-days, 3,977 items): worst status of its order lines, root cause, most severe impact (`No impact` rather than `None`, which pandas would read as empty), cleaned comment (no login).
+- **Pages** (`scripts/insights_pages.py`, analyses in `scripts/insights.py`):
+  - *Frequent Comments, Grouped*: near-identical comments counted as one issue, in three explainable rules: same text after normalisation (case, punctuation, *stock-out* / *pull-in* spellings), one wording contained in the other with the same main root cause (`px13` and `px13 - No stockout detected`), similar wording (cosine of character 3-5-grams ≥ 0.55, adjustable) with the same main root cause. A wording joins the most frequent similar one (no chains); the reason of every merge is shown. 1,504 distinct wordings → 1,044 issues. Option: count only the problem (first written entry) or the latest status (most recent entry): the journal is written newest first (171 cells vs 8).
+  - *Root Cause Trends (all snapshots)*: items per root cause (or per stakeholder, prefix of the root cause) and week, from the tracking table; *What changed between two weeks*: items that entered / left Actual (or Potential) Stock Out between two week-end snapshots, by root cause, with their comments.
+  - *Root Cause × Impact*: contingency table of the items, chi-square test of independence (p < 0.001, Cramér's V 0.26: moderate association), and per root cause the share of severe impacts (Production + Market), lift and Fisher's exact test.
+  - *Weak Signals*: do the first comments of an item announce a Production / Market impact entered later? 1,221 items, 126 severe later, median 20 days of warning. Words with a significant lift (Fisher's exact test: *request pull-in*, *trying to expedite*, *escalated to procurement*), a logistic regression with 5-fold cross-validation scored with the MCC (comment + root cause: MCC ≈ 0.26-0.29, AUC ≈ 0.76; root cause alone: MCC ≈ 0.19), and a watch list of open items ranked by their out-of-fold risk.
+- **Literature**: Usuga-Cadavid et al. (*Using deep learning to value free-form text data for predictive maintenance*): on short, code-like texts classic models are as good as transformers; MCC for imbalanced classes; aggregated word contributions as insights. The same choices are made here, so that every result can be explained.
+- **Limits**: the grouping does not catch synonyms written differently (*expedite* / *pull-in*): a multilingual sentence-embedding model would be the next step. The weak-signal model is trained on few positive items (126): a ranking to look at first, not a forecast. Impacts are mostly entered on Actual Stock Outs (internal rule), so the population is not neutral.
 
 ## 🔄 Updating the Data (new snapshots)
 Run everything from the project root, with the virtual environment active:
@@ -111,6 +122,7 @@ source venv/bin/activate
 |------|---------|--------------|
 | 1. Add the files | copy the new CSV files into `data/Snapshot_2026/` | Same columns as the existing files; the file name does not matter, days already present are not counted twice. |
 | 2. Rebuild (steps 1-6) | `python scripts/data_cleaning.py` (or Run All in `data_cleaning.ipynb`) | Re-reads **all** snapshots and rewrites `data/cleaned_comments.csv` (~30 s): new comments added, `Last_Seen` / `Days_Active` updated, latest root cause and impact taken. |
+| 2b. Tracking table | `python scripts/tracking.py` | Re-reads all snapshots and rewrites `data/item_tracking.csv` (~20 s), used by the Insights Lab pages. |
 | 3. Translate (step 7) | only if step 2 reports German entries not translated yet: `python scripts/translation.py --dry-run` then `python scripts/translation.py` (or `translation.ipynb`) | The dry run only counts the characters to send. The real run pseudonymises and translates **only the new** German comments (the others come from the cache) and prints the monthly DeepL usage. If interrupted, just run it again. |
 | 4. Reload | Streamlit → menu **⋮** → **Clear cache**, then **Rerun** (or `Ctrl + C` and `streamlit run scripts/app.py`) | Streamlit keeps the data in memory: "Rerun" alone does not reload the CSV. |
 
@@ -130,7 +142,9 @@ source venv/bin/activate
 - [ ] Have the DeepL glossary (`lexicon/glossary_de_en.csv`) validated by the planners together with the abbreviations: confirm or correct the English term, set `status`, then `python scripts/translation.py --dry-run` and, if the cost is acceptable, `--refresh-glossary`.
 - [ ] Have the abbreviation library validated by the planners (Johannes and Alexis): Excel sheet `data/interim/abbreviations_for_review.xlsx` (step 6b of `data_cleaning.ipynb`); start with the low-confidence abbreviations, `LT` first.
 - [ ] Evaluate the Smart Analysis (are the figures and quotes faithful? compare cloud vs local on the same selections); no formal evaluation exists yet.
-- [ ] Tracking table for the trends over time (root cause, impact, status per snapshot, also without comment).
+- [x] Tracking table for the trends over time (root cause, impact, status per snapshot, also without comment).
+- [ ] Validate the Insights Lab pages, then let them replace the sections of the main page.
+- [ ] Group synonyms written differently (multilingual sentence embeddings) if the planners need it.
 - [ ] Improve the language detection of short mixed entries (step 5).
 - [ ] Deepen NLP analysis (keyword extraction, root cause correlations); add word clouds / heatmaps.
 - [ ] If Roche adopts the dashboard: rebuild it on an internal platform (e.g., R Shiny, Posit Connect).

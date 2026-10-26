@@ -39,7 +39,8 @@ Roche_AI_PoC/
 ├── data/
 │   ├── Snapshot_2026/           # Raw daily snapshots (not pushed to GitHub)
 │   ├── interim/                 # translation_cache.csv (not pushed to GitHub)
-│   └── cleaned_comments.csv     # Cleaned + translated comments (not pushed to GitHub)
+│   ├── cleaned_comments.csv     # Cleaned + translated comments (not pushed to GitHub)
+│   └── item_tracking.csv        # All snapshot rows per day and item, for the Insights Lab (not pushed)
 │
 ├── lexicon/
 │   ├── abbreviations.csv        # Library of abbreviations (DE/EN) with proposed meanings, to be validated by the planners
@@ -60,6 +61,9 @@ Roche_AI_PoC/
 │   ├── translation.py           # Step 7: pseudonymise + DeepL translation entry by entry (Comment_EN), glossary, cache
 │   ├── glossary.py              # Reads lexicon/glossary_de_en.csv, creates/reuses the DeepL glossary
 │   ├── stats_engine.py          # All statistics (pandas), used by the dashboard and the LLM
+│   ├── tracking.py              # Builds data/item_tracking.csv from all snapshot rows
+│   ├── insights.py              # Insights Lab: grouped comments, trends, root cause x impact, weak signals
+│   ├── insights_pages.py        # Insights Lab pages (second row of the menu)
 │   ├── llm_summary.py           # AI summary: Mistral API (cloud) or local LLM (LM Studio)
 │   ├── pseudonymise.py          # Hides names/IDs before text is sent to DeepL or Mistral
 │   ├── config.py                # Reads the API keys from .env
@@ -93,6 +97,7 @@ Roche_AI_PoC/
 2. **Build and translate the comments** (after adding new snapshots to `data/Snapshot_2026/`):
    ```bash
    python scripts/data_cleaning.py
+   python scripts/tracking.py                # tracking table of all snapshot rows (Insights Lab pages)
    python scripts/abbreviations.py --check --sheet    # validates the library, writes the Excel sheet for the planners (data/interim)
    python scripts/glossary.py --check        # validates the DeepL glossary
    python scripts/translation.py --dry-run   # characters to send to DeepL + cached translations made without the glossary
