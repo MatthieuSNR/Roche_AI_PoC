@@ -335,12 +335,14 @@ selection_parts = [p for p in [selection_label(selected_mrp), selection_label(se
                                selection_label(selected_root_cause), selection_label(selected_impact)] if p]
 selection_name = " / ".join(selection_parts) if selection_parts else "All comments"
 
+# The sidebar filters, as the Insights Lab and the Smart Analysis read them
+LAB_SELECTIONS = {"MRP_CONTROLLER": selected_mrp, "PURCHASING_GROUP": selected_pgroup,
+                  "VENDOR_LABEL": selected_vendor_label, "MATERIAL_LABEL": selected_material_label,
+                  "Root_Cause": selected_root_cause, "Impact_Level": selected_impact}
+
 # A page of the Insights Lab: drawn with the same filters, then nothing else of the main page
 if PAGE:
-    insights_pages.render(PAGE, df, filtered_df, {
-        "MRP_CONTROLLER": selected_mrp, "PURCHASING_GROUP": selected_pgroup, "VENDOR_LABEL": selected_vendor_label,
-        "MATERIAL_LABEL": selected_material_label, "Root_Cause": selected_root_cause,
-        "Impact_Level": selected_impact}, selection_name, PERIOD)
+    insights_pages.render(PAGE, df, filtered_df, LAB_SELECTIONS, selection_name, PERIOD)
     st.stop()
 
 # Compute all statistics ONCE (used by all sections and the AI Summary)
@@ -803,9 +805,11 @@ def render_ai_summary(mode: str):
 
     pseudonymise_on = cloud  # names, vendors and material numbers are always replaced before sending
     if cloud:
-        st.caption("A written review of the current selection: key findings, trends, where the issues come from, "
-                   "risks and recommended actions, illustrated with planner comments. All figures are computed "
-                   "from the data; the analysis only interprets them.")
+        st.caption("A written review of the current selection: key findings, what drives the issues, early warnings, "
+                   "risks to escalate and recommended actions, illustrated with planner comments. It uses the findings "
+                   "of the Insights Lab (root cause → impact, weak signals, watch list, long-open comments, recurring "
+                   "issues) and knows the filters, so it does not state the obvious. All figures are computed from "
+                   "the data; the analysis only interprets them.")
     else:
         st.caption("Generated locally via LM Studio: no data leaves the machine. "
                    "All figures are computed by pandas; the LLM only interprets them.")
@@ -826,15 +830,21 @@ def render_ai_summary(mode: str):
         # steps. Every value shown on the screen is a real figure of the current selection.
         # The answer is streamed: it appears word by word as soon as the model writes.
         result = {"parts": [], "done": False}
+        # Findings of the Insights Lab for the same selection (filters + timeframe): root cause -> impact, weak
+        # signals, watch list, long-open comments, recurring issues, recent changes. Computed here (not in the
+        # thread: they use the Streamlit caches); the model only interprets them.
+        with st.spinner("Gathering the findings of the deeper analyses..."):
+            context = insights_pages.smart_context(df, filtered_df, LAB_SELECTIONS, PERIOD, timeframe_option)
 
         def call_llm():
             try:
                 if cloud:
                     # fresh pseudonymiser: the aliases of this request only
                     pieces = stream_summary_cloud(
-                        stats, stats["top_comments"], pseudonymiser_template(len(df)).fresh() if pseudonymise_on else None)
+                        stats, stats["top_comments"], pseudonymiser_template(len(df)).fresh() if pseudonymise_on else None,
+                        context=context)
                 else:
-                    pieces = stream_summary(stats, stats["top_comments"])
+                    pieces = stream_summary(stats, stats["top_comments"], context=context)
                 for piece in pieces:
                     result["parts"].append(piece)
             except Exception as e:  # shown in the dashboard below
@@ -861,6 +871,11 @@ def render_ai_summary(mode: str):
              "value": f"median {stats.get('median_days_active', 0):.0f} days · {stats.get('comments_still_open', 0)} still open"},
             {"text": "Detecting week-by-week trends",
              "value": f"{stats.get('comments_first_snapshot', '–')} → {stats.get('comments_last_snapshot', '–')} comments/week"},
+            {"text": "Linking root causes to Production / Market impacts",
+             "value": f"{context.get('root_cause_to_impact', {}).get('severe_impact_pct_in_selection', '–')}% severe "
+                      "among the communicated impacts"},
+            {"text": "Looking for weak signals and open items at risk",
+             "value": f"{len(context.get('watch_list_open_items_most_at_risk', []))} items on the watch list"},
             {"text": "Writing the analysis" if cloud else "Writing the summary with the local language model",
              "value": "names pseudonymised" if cloud else "on-device"},
         ]

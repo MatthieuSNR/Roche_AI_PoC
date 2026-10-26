@@ -81,3 +81,16 @@ def test_cloud_stream_sends_aliases_and_restores_names(monkeypatch):
 def test_local_prompt_is_unchanged_without_pseudonyms():
     content = llm_summary.build_prompt(STATS, STATS["top_comments"])[0]["content"]
     assert "Acme Medical GmbH" in content and "pseudonyms" not in content
+
+
+def test_prompt_knows_the_filters_and_drops_trivial_statistics():
+    import llm_summary as llm
+    stats = {"total_comments": 40, "top_vendors": {"Acme": {"pct": 100.0}}, "top_mrp_controllers": {"E1": {"pct": 60.0}}}
+    context = {"selection": {"filters": {"vendor": ["Acme"]}, "timeframe": "Last 8 weeks", "comments": 40, "all_comments": 900},
+               "root_cause_to_impact": {"items_with_impact_communicated": 20, "severe_impact_pct_in_selection": 55.0,
+                                        "per_root_cause": {"QM Lot": {"items_with_impact_communicated": 6, "severe_pct": 33.3,
+                                                                      "times_average": 0.6, "significant": False}}}}
+    prompt = llm.build_prompt(stats, [], context=context)[0]["content"]
+    assert "top_vendors_pct_of_comments" not in prompt and "top_mrp_controllers_pct_of_comments" in prompt
+    assert "The user filtered on: vendor = Acme" in prompt and "never write that the issues come from" in prompt
+    assert "0.6× the average (less often than average)" in prompt          # ratios written out, not left to the model

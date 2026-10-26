@@ -669,3 +669,130 @@ def render(page, df, filtered_df, selections, selection_name, period=None):
         page_cause_impact(tracking_filtered, selection_name)
     elif page == "weak-signals":
         page_weak_signals(tracking, tracking_filtered, st.session_state["_comments_en"], selection_name, period)
+
+
+# ------------------------------------------------------------------ context for the Smart Analysis (LLM)
+FILTER_NAMES = {"MRP_CONTROLLER": "MRP controller", "PURCHASING_GROUP": "purchasing group", "VENDOR_LABEL": "vendor",
+                "MATERIAL_LABEL": "material", "Root_Cause": "root cause", "Impact_Level": "impact"}
+
+
+def _short(text, n=160):
+    text = " ".join(str(text).split())
+    return text if len(text) <= n else text[:n - 1] + "…"
+
+
+def smart_context(df, filtered_df, selections, period=None, timeframe=""):
+    """Everything the Insights Lab knows about the current selection, as compact facts for the Smart Analysis:
+    the filters (so that the model does not 'discover' them), how the selection differs from all comments,
+    root cause -> impact, weak signals and the watch list, long-open comments, recurring issues (grouped),
+    what changed in the last week and the root causes rising over the last 4 weeks.
+    All figures are computed here; the model only interprets them."""
+    facts = {"selection": {"filters": {FILTER_NAMES[k]: [v.split(" — ")[0] for v in vals]
+                                       for k, vals in selections.items() if vals},
+                           "timeframe": timeframe or "all snapshots",
+                           "comments": int(len(filtered_df)), "all_comments": int(len(df))}}
+    filtered_on = set(facts["selection"]["filters"])
+
+    # 1. how the selection differs from all comments (root causes over / under-represented)
+    if filtered_on and len(filtered_df):
+        sel = filtered_df["Root_Cause"].fillna(ins.NO_ROOT_CAUSE).value_counts(normalize=True) * 100
+        everyone = df["Root_Cause"].fillna(ins.NO_ROOT_CAUSE).value_counts(normalize=True) * 100
+        diff = (sel - everyone.reindex(sel.index).fillna(0)).sort_values(key=abs, ascending=False).head(5)
+        facts["root_causes_vs_all_comments_pct_points"] = {
+            c: {"selection_pct": round(sel[c], 1), "all_comments_pct": round(everyone.get(c, 0), 1),
+                "difference_pct_points": round(d, 1)} for c, d in diff.items()}
+
+    # 2. recurring issues (near-identical comments grouped) and comments open for long
+    entries = ins.comment_entries(filtered_df)[["Entry", "Root_Cause", "MATERIAL_NUMBER", "VENDOR_NAME", "Days_Active"]]
+    if len(entries):
+        groups, _ = _groups(entries.reset_index(drop=True), ins.METHODS["chars"], "chars")
+        facts["recurring_issues"] = [
+            {"issue": _short(g["Comment"], 120), "entries": int(g["Occurrences"]), "materials": int(g["Materials"]),
+             "vendors": int(g["Vendors"]), "main_root_cause": g["Main_root_cause"]}
+            for _, g in groups.head(6).iterrows()]
+    last = df["Last_Seen"].max()
+    still_open = (filtered_df[filtered_df["Last_Seen"] == last].sort_values("Days_Active", ascending=False)
+                  .drop_duplicates("Comment_EN").head(4))
+    facts["comments_open_longest"] = [
+        {"comment": _short(r["Comment_EN"]), "days_visible": int(r["Days_Active"]),
+         "root_cause": r["Root_Cause"] if pd.notna(r["Root_Cause"]) else ins.NO_ROOT_CAUSE,
+         "impact": r["Impact_Level"], "material_status": r["MATERIAL_STATUS"]} for _, r in still_open.iterrows()]
+
+    tracking = load_tracking()
+    if tracking is None:
+        return facts
+    scope = filter_tracking(tracking, selections, period)
+
+    # 3. root cause -> impact (items, impact communicated only)
+    try:
+        table, per_cause, test = ins.root_cause_impact(scope, min_items=3)
+        rows = per_cause[per_cause["Impact communicated"] >= 3].head(6)
+        facts["root_cause_to_impact"] = {
+            "items_with_impact_communicated": test["n_items"],
+            "severe_impact_pct_in_selection": test["severe_base_pct"],
+            "per_root_cause": {r["Root cause"]: {"items_with_impact_communicated": int(r["Impact communicated"]),
+                                                 "severe_pct": r["% severe"], "times_average": r["Lift"],
+                                                 "significant": bool(r["p-value"] < SIGNIFICANT)}
+                               for _, r in rows.iterrows()}}
+    except ValueError:
+        pass
+    items_scope = scope.groupby(ins.ITEM)["Impact_Level"].agg(lambda s: s.dropna().nunique() > 0)
+    facts["items_impact_not_communicated"] = int((~items_scope).sum())
+    facts["items_in_selection"] = int(len(items_scope))
+
+    # 4. weak signals of the selection and watch list
+    all_items, model = _weak_signals(tracking, st.session_state.get("_comments_en") or dict(zip(df["Comment"], df["Comment_EN"])))
+    keys = set(map(tuple, scope[ins.ITEM].drop_duplicates().to_numpy()))
+    items = all_items[[(m, v) in keys for m, v in zip(all_items["MATERIAL_NUMBER"], all_items["VENDOR_ACCOUNT_NUMBER"])]]
+    if len(items):
+        severe = items["Severe_later"]
+        weak = {"items_with_first_comment": int(len(items)),
+                "share_of_these_items_with_impact_later_pct": round(severe.mean() * 100, 1),
+                "median_days_between_first_comment_and_impact":
+                    float(items.loc[severe, "Days_before_impact"].median()) if severe.any() else None}
+        if len(items) >= 30 and severe.sum() >= 3:
+            phrases, context = _selection_signals(items.reset_index(drop=True))
+            if len(phrases):
+                weak["phrases_followed_by_impact"] = [
+                    {"phrase": r["Phrase"], "items_with_phrase": int(r["Items"]),
+                     "of_these_impact_later_pct": r["% impact later"],
+                     "times_average": r["× average"], "significant": bool(r["p-value"] < SIGNIFICANT),
+                     "example": _short(r["Example"], 120)} for _, r in phrases.head(5).iterrows()]
+            for column, label in (("VENDOR_NAME", "vendor"), ("Root_Cause", "root cause"),
+                                  ("MATERIAL_STATUS", "material status")):
+                frame = context[column]
+                if label in filtered_on or frame.empty:
+                    continue
+                top = frame[(frame["× average"] > 1) & (frame["p-value"] < 0.1)].head(3)
+                if len(top):
+                    weak[f"{label}_followed_by_impact"] = {
+                        r[column]: {"items": int(r["Items"]), "of_these_impact_later_pct": r["% impact later"]}
+                        for _, r in top.iterrows()}
+        else:
+            weak["note"] = "too few items for reliable weak signals"
+        facts["weak_signals"] = weak
+        if model:
+            watch = items[(items["Last_seen"] == tracking["Snapshot_Date"].max()) & ~items["Severe_later"]]
+            facts["watch_list_open_items_most_at_risk"] = [
+                {"risk_score": int(round(r["Risk"] * 100)), "why": r["Why"], "first_comment": _short(r["Text"], 120),
+                 "root_cause": r["Root_Cause"], "status_now": r["Status_now"],
+                 "days_since_first_comment": int((tracking["Snapshot_Date"].max() - r["First_comment"]).days)}
+                for _, r in watch.sort_values("Risk", ascending=False).head(5).iterrows()]
+
+    # 5. last week: items that entered / left Actual Stock Out, by root cause
+    ends = ins.week_end_days(scope)
+    weeks = sorted(ends)
+    if len(weeks) >= 2:
+        summary, _, n_a, n_b = ins.status_change(scope, ends[weeks[-2]], ends[weeks[-1]])
+        facts["actual_stock_out_last_week"] = {
+            "items_previous_week": n_a, "items_last_week": n_b,
+            "root_causes_of_the_change": {r["Root cause"]: {"entered": int(r["Entered"]), "left": int(r["Left"])}
+                                          for _, r in summary.head(4).iterrows() if r["Entered"] or r["Left"]}}
+    # 6. root causes rising / falling: last 4 weeks vs the 4 weeks before (items per week, all snapshot rows)
+    weekly = ins.weekly_items(scope)
+    if len(weekly) >= 8:
+        change = (weekly.iloc[-4:].mean() - weekly.iloc[-8:-4].mean()).round(1)
+        facts["root_causes_items_per_week_change_last_4_weeks"] = {
+            "rising": {c: v for c, v in change[change > 0].sort_values(ascending=False).head(3).items()},
+            "falling": {c: v for c, v in change[change < 0].sort_values().head(3).items()}}
+    return facts

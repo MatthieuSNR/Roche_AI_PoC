@@ -30,9 +30,12 @@ MODEL_NAME = os.getenv("LM_STUDIO_MODEL") or "mistralai/mistral-7b-instruct-v0.3
 # by Mistral AI. The key is read from .env or, once deployed, from the Streamlit secrets.
 MISTRAL_BASE_URL = os.getenv("MISTRAL_BASE_URL", "https://api.mistral.ai/v1")
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "ministral-14b-latest")  # free plan: small/medium often rate-limited (429), large not included (403)
-MAX_TOKENS = 750   # structured analysis of 250-350 words (~450 tokens), with a margin
-SECTIONS = ["Key findings", "Trend over time", "Where the issues come from",
+MAX_TOKENS = 1100  # structured analysis of 350-450 words (~650 tokens), with a margin
+SECTIONS = ["Key findings", "What drives the issues", "Early warnings",
             "Risks to escalate", "Recommended actions"]
+# Statistics that only repeat a filter ("all comments come from the selected vendor") are left out
+FILTER_FACETS = {"vendor": "top_vendors_pct_of_comments", "MRP controller": "top_mrp_controllers_pct_of_comments",
+                 "purchasing group": "top_purchasing_groups_pct_of_comments"}
 
 def get_client() -> OpenAI:
     """Create an OpenAI-compatible client pointing to the local LM Studio server."""
@@ -49,9 +52,10 @@ def is_server_available() -> bool:
 
 
 
-def build_facts(stats: dict) -> dict:
+def build_facts(stats: dict, filtered_on=()) -> dict:
     """Compact facts for the prompt. Every key states its unit, so the model does not
-    turn a number of comments into a percentage (seen in tests: "+75%" for "+75 comments")."""
+    turn a number of comments into a percentage (seen in tests: "+75%" for "+75 comments").
+    filtered_on: the filters of the selection; the statistics that only repeat them are left out."""
     facts = {
         "comments_in_selection": stats.get("total_comments"),
         "share_of_all_comments_pct": stats.get("share_of_all_comments_pct"),
@@ -78,31 +82,128 @@ def build_facts(stats: dict) -> dict:
             stats["total_comments"] - sum(stats["impact_counts"].values())
             if stats.get("impact_counts") is not None and stats.get("total_comments") else None),
     }
+    for name in filtered_on:
+        facts.pop(FILTER_FACETS.get(name, ""), None)
     # explicit test: "v not in (None, {}, [])" raises an error when v is a numpy number
     return {k: v for k, v in facts.items()
             if v is not None and not (isinstance(v, (dict, list, str)) and (not v or v == "None to None"))}
 
 
-def build_prompt(stats: dict, sample_comments: list[str], pseudonymised: bool = False) -> list[dict]:
+def _times(x):
+    return f"{x:.1f}× the average ({'more' if x > 1 else 'less'} often than average)"
+
+
+def describe_context(context: dict) -> list[str]:
+    """The findings of the Insights Lab written as plain sentences, one verified fact per line: the model
+    reasons on clear statements instead of reading JSON keys (it misread ratios and counts in tests)."""
+    lines = []
+    sel = context.get("selection", {})
+    if sel.get("filters"):
+        lines.append("The user filtered on: " + "; ".join(f"{k} = {', '.join(v)}" for k, v in sel["filters"].items())
+                     + f" (timeframe: {sel.get('timeframe')}). {sel.get('comments')} of {sel.get('all_comments')} comments.")
+    for cause, d in context.get("root_causes_vs_all_comments_pct_points", {}).items():
+        lines.append(f"Root cause '{cause}': {d['selection_pct']}% of the comments of the selection vs "
+                     f"{d['all_comments_pct']}% of all comments ({d['difference_pct_points']:+} percentage points).")
+    for g in context.get("recurring_issues", []):
+        lines.append(f"Recurring issue \"{g['issue']}\": {g['entries']} entries on {g['materials']} materials, "
+                     f"{g['vendors']} vendor(s), main root cause '{g['main_root_cause']}'.")
+    for c in context.get("comments_open_longest", []):
+        lines.append(f"Open for {c['days_visible']} days and still visible: \"{c['comment']}\" (root cause "
+                     f"'{c['root_cause']}', impact {c['impact']}, status {c['material_status']}).")
+    rci = context.get("root_cause_to_impact")
+    if rci:
+        lines.append(f"Of the {rci['items_with_impact_communicated']} items whose impact was communicated, "
+                     f"{rci['severe_impact_pct_in_selection']}% had a Production or Market impact.")
+        for cause, d in rci.get("per_root_cause", {}).items():
+            lines.append(f"Items with root cause '{cause}': {d['severe_pct']}% severe impact "
+                         f"({d['items_with_impact_communicated']} items), {_times(d['times_average'])}"
+                         + (", unlikely to be chance." if d["significant"] else ", may be chance."))
+    if "items_impact_not_communicated" in context:
+        lines.append(f"{context['items_impact_not_communicated']} of {context.get('items_in_selection')} items have no "
+                     "impact communicated (unknown, not 'no impact').")
+    weak = context.get("weak_signals", {})
+    if weak:
+        lines.append(f"Weak signals: of {weak['items_with_first_comment']} items with a first comment, "
+                     f"{weak['share_of_these_items_with_impact_later_pct']}% later received a Production / Market impact"
+                     + (f", a median of {weak['median_days_between_first_comment_and_impact']:.0f} days after the first comment."
+                        if weak.get("median_days_between_first_comment_and_impact") is not None else "."))
+        for ph in weak.get("phrases_followed_by_impact", []):
+            lines.append(f"First comments containing \"{ph['phrase']}\" ({ph['items_with_phrase']} items): "
+                         f"{ph['of_these_impact_later_pct']}% later had a severe impact, {_times(ph['times_average'])}"
+                         + (", unlikely to be chance" if ph["significant"] else "") + f". Example: \"{ph['example']}\"")
+        for label in ("vendor", "root cause", "material status"):
+            for value, d in weak.get(f"{label}_followed_by_impact", {}).items():
+                lines.append(f"Items whose first comment had {label} '{value}' ({d['items']} items): "
+                             f"{d['of_these_impact_later_pct']}% later had a severe impact.")
+        if weak.get("note"):
+            lines.append("Weak signals: " + weak["note"] + ".")
+    for w in context.get("watch_list_open_items_most_at_risk", []):
+        lines.append(f"Watch list (open, no severe impact yet), risk score {w['risk_score']}/100: \"{w['first_comment']}\" "
+                     f"— root cause '{w['root_cause']}', status now {w['status_now']}, first commented "
+                     f"{w['days_since_first_comment']} days ago; raised by: {w['why']}.")
+    aso = context.get("actual_stock_out_last_week")
+    if aso:
+        changes = "; ".join(f"'{c}' +{d['entered']} / -{d['left']}" for c, d in aso["root_causes_of_the_change"].items())
+        lines.append(f"Items in Actual Stock Out: {aso['items_previous_week']} the previous week, {aso['items_last_week']} "
+                     f"last week" + (f" (entered / left by root cause: {changes})." if changes else "."))
+    trend = context.get("root_causes_items_per_week_change_last_4_weeks", {})
+    for direction in ("rising", "falling"):
+        for cause, v in trend.get(direction, {}).items():
+            lines.append(f"Root cause '{cause}' is {direction}: {v:+} items per week on average over the last 4 weeks "
+                         "compared with the 4 weeks before.")
+    return lines
+
+
+def build_prompt(stats: dict, sample_comments: list[str], pseudonymised: bool = False, context: dict | None = None) -> list[dict]:
     """Build the chat message. NOTE: mistral-7b-instruct-v0.3 does not
-    support the 'system' role, so instructions are merged into the user message."""
+    support the 'system' role, so instructions are merged into the user message.
+    context = the findings of the Insights Lab for the selection (insights_pages.smart_context)."""
     headings = "\n".join(f"### {h}" for h in SECTIONS)
+    context = context or {}
+    filtered_on = list(context.get("selection", {}).get("filters", {}))
     instructions = (
         "You are a senior supply chain analyst at a pharmaceutical company, preparing the weekly "
-        "Supply Risk Meeting. You receive PRECOMPUTED statistics about planner comments and, for the "
-        "main root causes, the most frequent comments written by the planners.\n"
-        "Write an in-depth analysis of 250 to 350 words, in English, using EXACTLY these five "
-        "headings, in this order:\n"
+        "Supply Risk Meeting. You receive PRECOMPUTED facts about the planner comments of a SELECTION, "
+        "and the findings of deeper analyses of the same selection: how it differs from all comments, which "
+        "root causes lead to a Production / Market impact, weak signals (first comments after which an impact "
+        "came more often than usual), open items most at risk, comments open for a long time, recurring "
+        "issues, and what changed recently.\n"
+        "Write an analysis of 300 to 400 words, in English, using EXACTLY these five headings, in this order:\n"
         f"{headings}\n"
-        "Under each heading, write 2 or 3 bullet points starting with '- '. Each bullet is one or two "
-        "full sentences. Explain WHY things happen with the planner comments, not only the numbers: "
-        "under 'Key findings' and 'Risks to escalate', quote at least one planner comment word for word "
-        "in double quotes (copy it exactly from the comments below). Under 'Where the issues come from', name the main vendors, purchasing "
-        "groups and MRP controllers. Under 'Recommended actions', give concrete next steps for the planners "
-        "(no new figures). You may write **bold** for key terms.\n"
-        "STRICT RULES: only use the numbers provided in the statistics — never compute, estimate, "
-        "or invent figures. A key ending in _pct is a percentage; every other number is a count of "
-        "comments, never a percentage. Write nothing before the first heading.\n"
+        "Under each heading, write 2 or 3 bullet points starting with '- '. Each bullet is one or two full "
+        "sentences.\n"
+        "HOW TO THINK:\n"
+        "- The selection is defined by the user's filters (see 'selection'). Everything belongs to it BY "
+        "CONSTRUCTION: never write that the issues come from, depend on or are concentrated in the filtered "
+        "vendor, MRP controller, purchasing group, material, root cause or impact. That is trivial. Look instead "
+        "at what differs INSIDE the selection and compared with all comments.\n"
+        "- Reason like an analyst, not like a reader of statistics: connect the root cause, the impact and what "
+        "the comments say (what went wrong, what was done, what is still pending), and say why it matters. Use "
+        "the figures as evidence for the reasoning, not as the content. Separate facts from interpretation "
+        "(\"this suggests\", \"likely\").\n"
+        "- 'What drives the issues': the root causes and the recurring issues behind the problems, and which "
+        "ones lead to a severe impact more often than average.\n"
+        "- 'Early warnings': the weak signals (phrases, context) and the open items most at risk of the watch "
+        "list, with why they are at risk; mention comments that stay open for a long time.\n"
+        "- 'Risks to escalate': what could turn into a Production or Market impact soon, and recent changes.\n"
+        "- 'Recommended actions': concrete next steps for planners and buyers (no new figures).\n"
+        "- Quote at least two planner comments word for word in double quotes, copied exactly from the facts.\n"
+        "- An impact that is not communicated is UNKNOWN, never 'no impact'.\n"
+        "- If the selection holds fewer than 30 comments, say that the conclusions are tentative.\n"
+        "DOMAIN NOTES: 'pull-in' = asking the supplier to deliver earlier than confirmed. 'No stockout detected' "
+        "or 'no stockout apparent' = the planner checked and the dashboard alert was a FALSE ALARM (often root "
+        "cause 'Data error dashboard'). 'Actual Stock Out' is a status computed by the dashboard (the delivery "
+        "comes too late), not necessarily a stop of the line. Codes such as px13 are product lines / instrument "
+        "series. 'LT' = delivery date or lead time.\n"
+        "FORMAT: the five headings exactly as written above, each on its own line starting with '### ', every "
+        "heading present once. No horizontal lines ('---'), no other headings. At most one **bold** phrase per "
+        "bullet, and only for the key idea. Stay within 400 words.\n"
+        "STRICT RULES: only use the numbers provided, copied exactly — never compute, estimate or invent figures. "
+        "A key ending in _pct is a percentage, _pct_points a difference of percentages, times_average a ratio "
+        "to the average (write it as '2.5× the average'; ABOVE 1 = more often than average, BELOW 1 = less "
+        "often, so a root cause at 0.6× is LESS likely to lead to a severe impact); 'significant': true = unlikely "
+        "to be chance. Every other number is a count. Attribute each number to what its key describes. Write nothing before "
+        "the first heading.\n"
     )
     if pseudonymised:
         instructions += (
@@ -118,8 +219,10 @@ def build_prompt(stats: dict, sample_comments: list[str], pseudonymised: bool = 
     )
     user_content = (
         instructions
-        + "Statistics (computed by pandas, JSON):\n"
-        + json.dumps(build_facts(stats), separators=(",", ":"))
+        + "Statistics of the selection (computed by pandas, JSON):\n"
+        + json.dumps(build_facts(stats, filtered_on), separators=(",", ":"), default=str)
+        + ("\n\nFindings of the deeper analyses of the selection (each line is a verified fact):\n"
+           + "\n".join(f"- {line}" for line in describe_context(context)) if context else "")
         + "\n\nMost frequent comments of the main root causes:\n"
         + evidence
         + "\n\nMost frequent comments overall:\n"
@@ -131,12 +234,12 @@ def build_prompt(stats: dict, sample_comments: list[str], pseudonymised: bool = 
     ]
 
 
-def stream_summary(stats: dict, sample_comments: list[str]):
+def stream_summary(stats: dict, sample_comments: list[str], context: dict | None = None):
     """Call the local LLM and yield its analysis piece by piece (streaming)."""
     client = get_client()
     stream = client.chat.completions.create(
         model=MODEL_NAME,
-        messages=build_prompt(stats, sample_comments),
+        messages=build_prompt(stats, sample_comments, context=context),
         temperature=0.2,   # low temperature: factual, less "creative"
         max_tokens=MAX_TOKENS,
         stream=True,
@@ -156,14 +259,15 @@ def is_cloud_configured() -> bool:
     return bool(os.getenv("MISTRAL_API_KEY", "").strip())
 
 
-def stream_summary_cloud(stats: dict, sample_comments: list[str], pseudonymiser=None):
+def stream_summary_cloud(stats: dict, sample_comments: list[str], pseudonymiser=None, context: dict | None = None):
     """Same analysis as stream_summary, written by the Mistral API.
 
     With a PromptPseudonymiser the request contains aliases (VENDOR_1, MRP_2...) instead of
     names; the aliases of the answer are replaced by the original names before they are yielded."""
     if pseudonymiser is not None:
         stats, sample_comments = pseudonymiser.apply(stats), pseudonymiser.apply(sample_comments)
-    messages = build_prompt(stats, sample_comments, pseudonymised=pseudonymiser is not None)
+        context = pseudonymiser.apply(context) if context else context
+    messages = build_prompt(stats, sample_comments, pseudonymised=pseudonymiser is not None, context=context)
     stream = get_cloud_client().chat.completions.create(
         model=MISTRAL_MODEL, messages=messages, temperature=0.2, max_tokens=MAX_TOKENS, stream=True)
     pieces = (c.choices[0].delta.content for c in stream if c.choices and c.choices[0].delta.content)
@@ -181,9 +285,9 @@ def tidy(text: str) -> str:
     return text
 
 
-def generate_summary(stats: dict, sample_comments: list[str]) -> str:
+def generate_summary(stats: dict, sample_comments: list[str], context: dict | None = None) -> str:
     """Call the local LLM and return its analysis as text."""
-    text = tidy("".join(stream_summary(stats, sample_comments)))
+    text = tidy("".join(stream_summary(stats, sample_comments, context)))
     if not text:
         raise ValueError("No response from the LLM.")
     return text

@@ -467,8 +467,8 @@ def ai_loading_screen(steps, total, sub, comments, step_ms=900, height=380):
     components.html(LOADING_HTML.replace("__DATA__", payload), height=height)
 
 
-SECTION_NAMES = {"key findings", "trend over time", "where the issues come from", "risks to escalate",
-                 "recommended actions"}
+SECTION_NAMES = {"key findings", "what drives the issues", "early warnings", "risks to escalate",
+                 "recommended actions", "trend over time", "where the issues come from"}
 
 
 def _inline(text):
@@ -482,7 +482,7 @@ def summary_to_html(text):
     out, in_list = [], False
     for raw in text.splitlines():
         line = raw.strip()
-        if not line:
+        if not line or set(line) <= set("-*_ "):   # empty line or horizontal rule ('---')
             continue
         name = re.sub(r"^#+\s*|\*\*|:$", "", line).strip().rstrip(":").strip()
         if line.startswith("#") or name.lower() in SECTION_NAMES:
