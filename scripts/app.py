@@ -78,14 +78,15 @@ df["PURCHASING_GROUP"] = df["PURCHASING_GROUP"].fillna("Unknown")
 
 # Impact filter: the data holds two spellings per level ("Production" and
 # "Production (Stop&Go/...)"), so the filter works on the four official levels
-# (ION: None / Logistics / Production / Market) plus the comments with no impact entered.
-IMPACT_FILTER_OPTIONS = ["Market", "Production", "Logistics", "None (no impact)", "Not assessed"]
+# (ION: None / Logistics / Production / Market) plus the comments whose impact was not communicated
+# (nothing entered: this does NOT mean that there is no impact).
+IMPACT_FILTER_OPTIONS = ["Market", "Production", "Logistics", "None (no impact)", "Not communicated"]
 
 
 def impact_level(value):
     """Map a raw Impact label to one of the filter options."""
     if pd.isna(value):
-        return "Not assessed"
+        return "Not communicated"
     label = str(value).strip().lower()
     for prefix, level in (("market", "Market"), ("production", "Production"),
                           ("logistic", "Logistics"), ("none", "None (no impact)")):
@@ -114,11 +115,19 @@ SECTIONS = [
     ("ai-summary", "Smart Analysis"),
 ]
 SECTION_TITLES = dict(SECTIONS)
-# New pages being validated (Insights Lab, scripts/insights_pages.py): second row of the menu, ?page=...
-PAGE = st.query_params.get("page", "")
-PAGE = PAGE if PAGE in dict(insights_pages.PAGES) else ""
-ui.top_bar("Material Availability", "Insights from Planner Comments", SECTIONS,
-           lab_pages=insights_pages.PAGES, lab_label=insights_pages.LAB_LABEL, current_page=PAGE)
+# New pages being validated (Insights Lab, scripts/insights_pages.py): second row of the menu.
+# Changing page is a rerun, not a reload: filters and password are kept. The page is also put in the
+# URL (?page=...), so that a reload or a shared link opens the same page.
+LAB_PAGES = [("", "Main page")] + insights_pages.PAGES
+if "lab_page" not in st.session_state:
+    st.session_state["lab_page"] = st.query_params.get("page", "") if st.query_params.get("page", "") in dict(LAB_PAGES) else ""
+with st.container():
+    ui.top_bar("Material Availability", "Insights from Planner Comments", SECTIONS)
+    PAGE = ui.lab_menu(LAB_PAGES, insights_pages.LAB_LABEL, key="lab_page")
+if PAGE:
+    st.query_params["page"] = PAGE
+elif "page" in st.query_params:
+    del st.query_params["page"]
 ui.scroll_spy()  # menu entry of the section on screen in blue
 
 # --- Saved views (like SAP "personalised views"): filters + table columns under a name ---
@@ -244,7 +253,7 @@ def multi_filter(box, label, column, key, order=None):
     return selected
 
 
-# Impact filter order: severity first (Market, Production, Logistics, None, Not assessed)
+# Impact filter order: severity first (Market, Production, Logistics, None, Not communicated)
 def impact_order(value):
     return (IMPACT_FILTER_OPTIONS.index(value), "") if value in IMPACT_FILTER_OPTIONS else (len(IMPACT_FILTER_OPTIONS), value)
 
@@ -757,6 +766,9 @@ with tab6:
                 st.markdown("**Impact**")
                 for impact, count in stats["impact_counts"].items():
                     st.caption(f"- {impact}: {count} ({count / stats['total_comments'] * 100:.1f}%)")
+                not_communicated = stats["total_comments"] - sum(stats["impact_counts"].values())
+                st.caption(f"- Not communicated (nothing entered, not 'no impact'): {not_communicated} "
+                           f"({not_communicated / stats['total_comments'] * 100:.1f}%)")
 
 
 

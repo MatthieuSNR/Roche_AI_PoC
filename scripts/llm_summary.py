@@ -73,6 +73,10 @@ def build_facts(stats: dict) -> dict:
         "root_causes_decreasing_comments_per_week": stats.get("causes_decreasing"),
         "material_status_number_of_comments": stats.get("material_status_counts"),
         "impact_number_of_comments": stats.get("impact_counts"),
+        # nothing entered = impact unknown, not "no impact": stated so that the model does not read it as none
+        "impact_not_communicated_number_of_comments": (
+            stats["total_comments"] - sum(stats["impact_counts"].values())
+            if stats.get("impact_counts") is not None and stats.get("total_comments") else None),
     }
     # explicit test: "v not in (None, {}, [])" raises an error when v is a numpy number
     return {k: v for k, v in facts.items()

@@ -107,11 +107,34 @@ div[data-testid="stVerticalBlock"] > div:has(.ion-nav) {{ position: sticky; top:
 .ion-nav a:hover {{ background: #E8F0FE; }}
 .ion-nav a.active {{ background: {ION_BLUE}; color: #fff !important; }}
 .emo {{ margin-right: 6px; }}
-/* Second row of the menu: the new pages being validated (Insights Lab) */
-.ion-nav.lab {{ border-top: none; background: #F8FAFD; align-items: center; }}
-.ion-nav .lab-tag {{
-  font-size: .74rem; font-weight: 600; color: {ION_BLUE}; text-transform: uppercase; letter-spacing: .03em;
-  padding: 6px 10px 6px 8px; border-right: 1px solid #D6DCE5; margin-right: 4px;
+/* Menu block = first row (HTML links) + second row (radio of the new pages), without gap
+   (Streamlit gives a markdown block a margin of -1rem below it: compensated here) */
+.ion-nav-wrap {{ margin-bottom: 1rem; }}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) {{ gap: 0; }}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) [role="radiogroup"] {{
+  display: flex; flex-wrap: wrap; align-items: center; gap: 2px; background: #F8FAFD; border: 1px solid #D6DCE5;
+  border-top: none; padding: 4px; box-shadow: 0 2px 4px rgba(0,0,0,.06);
+}}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) [role="radiogroup"]::before {{
+  content: "Insights Lab · new pages to validate"; font-size: .74rem; font-weight: 600; color: {ION_BLUE};
+  text-transform: uppercase; letter-spacing: .03em; padding: 6px 10px 6px 8px; border-right: 1px solid #D6DCE5;
+  margin-right: 4px;
+}}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) [role="radiogroup"] label {{
+  margin: 0 !important; padding: 6px 12px; border-radius: {RADIUS}; cursor: pointer;
+}}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) [role="radiogroup"] label > div:first-child {{
+  display: none;   /* no radio circle: looks like a menu link */
+}}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) [role="radiogroup"] label p {{
+  font-size: .86rem; color: #1F2937;
+}}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) [role="radiogroup"] label:hover {{ background: #E8F0FE; }}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) [role="radiogroup"] label:has(input:checked) {{
+  background: {ION_BLUE};
+}}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) [role="radiogroup"] label:has(input:checked) p {{
+  color: #fff;
 }}
 .ion-anchor {{ scroll-margin-top: {BAR_HEIGHT + 70}px; height: 0; }}
 /* the invisible scroll-spy iframe takes no space */
@@ -187,27 +210,27 @@ def _label(text):
     return html.escape(text)
 
 
-def top_bar(title, subtitle, sections, tag="AI PoC", lab_pages=(), lab_label="", current_page=""):
+def top_bar(title, subtitle, sections, tag="AI PoC"):
     """Blue title bar + navigation menu. sections = [(anchor_id, label)]: clicking a label
     scrolls down to that section; the menu stays visible at the top of the page.
-    lab_pages = [(page_id, label)]: second row of the menu, links to the new pages (?page=page_id);
-    on such a page (current_page), the first row leads back to the sections of the main page."""
+    The second row of the menu (new pages) is a Streamlit radio drawn just after it (lab_menu)."""
     st.markdown(
         f'<div class="ion-topbar"><div class="brand">{_logo_html()}'
         f'<span>{html.escape(title)}</span><span class="sub">{html.escape(subtitle)}</span>'
         f'<span class="tag">{html.escape(tag)}</span></div></div>',
         unsafe_allow_html=True,
     )
-    if current_page:   # a new page: the sections are on the main page (no scroll spy here)
-        links = "".join(f'<a href="./#{a}" target="_self">{_label(label)}</a>' for a, label in sections)
-    else:
-        links = "".join(f'<a href="#{a}" target="_self" data-target="{a}">{_label(label)}</a>' for a, label in sections)
-    lab = ""
-    if lab_pages:
-        lab_links = "".join(f'<a href="?page={p}" target="_self" class="{"active" if p == current_page else ""}">'
-                            f'{html.escape(label)}</a>' for p, label in lab_pages)
-        lab = f'<div class="ion-nav lab"><span class="lab-tag">{html.escape(lab_label)}</span>{lab_links}</div>'
-    st.markdown(f'<div class="ion-nav-wrap"><div class="ion-nav">{links}</div>{lab}</div>', unsafe_allow_html=True)
+    links = "".join(f'<a href="#{a}" target="_self" data-target="{a}">{_label(label)}</a>' for a, label in sections)
+    st.markdown(f'<div class="ion-nav-wrap"><div class="ion-nav">{links}</div></div>', unsafe_allow_html=True)
+
+
+def lab_menu(pages, label, key):
+    """Second row of the menu: the new pages, as a horizontal radio styled like the menu. Changing page
+    is a Streamlit rerun, not a page load: the filters, the password and the session are kept.
+    pages = [(page_id, label)], the first one being the main page. Returns the selected page_id."""
+    names = dict(pages)
+    return st.radio(label, [p for p, _ in pages], format_func=names.get, key=key, horizontal=True,
+                    label_visibility="collapsed")
 
 
 SCROLL_SPY_JS = """
@@ -225,8 +248,12 @@ SCROLL_SPY_JS = """
       let ticking = false, scroller = null;
       function update() {
         ticking = false;
-        const links = document.querySelectorAll(".ion-nav a[data-target]");
-        if (!links.length) return;
+        const links = [...document.querySelectorAll(".ion-nav a[data-target]")]
+          .filter(a => document.getElementById(a.dataset.target));
+        if (!links.length) {
+          document.querySelectorAll(".ion-nav a.active").forEach(a => a.classList.remove("active"));
+          return;
+        }
         // a section is "current" once its title is in the upper third of the screen
         const offset = Math.max(MIN_OFFSET, window.innerHeight * 0.35);
         let current = links[0].dataset.target;
@@ -245,6 +272,20 @@ SCROLL_SPY_JS = """
         if (t && t.scrollHeight > t.clientHeight) scroller = t;
         if (!ticking) { ticking = true; requestAnimationFrame(update); }
       }
+      // On a new page, the sections of the main page do not exist: select "Main page" in the second
+      // row (a Streamlit rerun, no reload), then scroll to the section once it is drawn.
+      document.addEventListener("click", e => {
+        const a = e.target.closest(".ion-nav a[data-target]");
+        if (!a || document.getElementById(a.dataset.target)) return;
+        e.preventDefault();
+        const main = document.querySelector('[role="radiogroup"] label');
+        if (main) main.click();
+        let tries = 0;
+        const timer = setInterval(() => {
+          const el = document.getElementById(a.dataset.target);
+          if (el || ++tries > 40) { clearInterval(timer); if (el) el.scrollIntoView({behavior: "smooth"}); }
+        }, 250);
+      }, true);
       document.addEventListener("scroll", request, true);
       window.addEventListener("resize", request);
       setInterval(update, 700);  // after Streamlit re-renders the menu

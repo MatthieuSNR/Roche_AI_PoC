@@ -11,7 +11,8 @@ of the new dashboard pages (scripts/insights.py):
 A material has several order lines per day (up to 70): they are summarised per item and day as
   MATERIAL_STATUS  the worst status of the lines (Actual > Potential > Below Safety > Good Part),
   Root_Cause       a root cause entered on one of the lines,
-  Impact_Level     the most severe impact (Market > Production > Logistics > None),
+  Impact_Level     the most severe impact entered (Market > Production > Logistics > None (no impact));
+                   empty = impact not communicated (which does not mean that there is no impact),
   Comment          the comment, cleaned like in cleaned_comments.csv (entries split, logins removed),
   N_Lines          the number of order lines.
 No login and no free text other than the cleaned comment is kept.
@@ -35,9 +36,10 @@ ITEM = ["MATERIAL_NUMBER", "VENDOR_ACCOUNT_NUMBER"]
 STATUS_RANK = {"Actual Stock Out": 0, "Potential Stock Out": 1, "Below Safety": 2, "Good Part": 3,
                "Unknown Status (Good Part)": 4}
 # The data holds two spellings per impact level ("Production" and "Production (Stop&Go/...)")
-# ("None" would be read back from the CSV as a missing value, hence "No impact")
-IMPACT_LEVELS = ["Market", "Production", "Logistics", "No impact"]   # most severe first
-IMPACT_PREFIXES = {"market": "Market", "production": "Production", "logistic": "Logistics", "none": "No impact"}
+# "None (no impact)" = the planner entered that there is no impact (ION label; "None" alone would be read back
+# from the CSV as a missing value). An empty impact means "not communicated", never "no impact".
+IMPACT_LEVELS = ["Market", "Production", "Logistics", "None (no impact)"]   # most severe first
+IMPACT_PREFIXES = {"market": "Market", "production": "Production", "logistic": "Logistics", "none": "None (no impact)"}
 SEVERE_IMPACTS = {"Market", "Production"}
 
 

@@ -29,7 +29,8 @@ from entries import split_cell
 NO_ROOT_CAUSE = "(no root cause)"
 ITEM = ["MATERIAL_NUMBER", "VENDOR_ACCOUNT_NUMBER"]
 SEVERE_IMPACTS = ["Market", "Production"]
-IMPACT_COLUMNS = ["Market", "Production", "Logistics", "No impact", "Not assessed"]
+NOT_COMMUNICATED = "Not communicated"   # no impact entered: unknown, NOT "no impact"
+IMPACT_COLUMNS = ["Market", "Production", "Logistics", "None (no impact)", NOT_COMMUNICATED]
 MAX_EXTRA_WORDS = 3
 # Stakeholder responsible for a root cause = prefix of its name (legend from Johannes Höttler, 21.10)
 STAKEHOLDERS = {"S": "Supplier", "B": "Buying", "P": "Procurement", "I": "Import/Export", "M": "Material Management",
@@ -67,14 +68,43 @@ def comment_entries(df, which="all", text_column="Comment_EN"):
     return rows.rename(columns={"_entries": "Entry"})
 
 
+DATE = re.compile(r"\b\d{1,2}[./]\d{1,2}(?:[./]\d{2,4})?\b|\b\d{4}-\d{2}-\d{2}\b")
+
+
+def neutral_label(wordings):
+    """Group label without the dates and numbers that vary between its wordings: the group
+    "25 estimated time of arrival 9/7-9/9", "40 estimated time of arrival 7/28"... is labelled
+    "[n] estimated time of arrival [date]". Unchanged when the numbers are the same in all wordings."""
+    label = wordings[0]
+    without = {" ".join(re.sub(r"\d+", " ", normalise(w)).split()) for w in wordings}
+    digits = {tuple(re.findall(r"\d+", w)) for w in wordings}
+    if len(wordings) < 2 or len(digits) < 2 or len(without) == len(wordings):
+        return label
+    label = DATE.sub("[date]", label)
+    label = re.sub(r"\[date\]\s*-\s*\[date\]", "[date]", label)
+    return re.sub(r"\b\d+(?:[.,]\d+)?\b", "[n]", label)
+
+
 def _main_root_cause(series):
     known = series.dropna()
     return known.mode().iloc[0] if len(known) else NO_ROOT_CAUSE
 
 
-def group_comments(entries, threshold=0.55):
+EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"   # 90 MB, runs on this Mac, no data leaves it
+METHODS = {"chars": 0.55, "meaning": 0.80}   # default similarity threshold of each method
+
+
+def embed(texts, model_name=EMBEDDING_MODEL):
+    """Sentence embeddings (normalised), computed locally. The model is downloaded once (Hugging Face cache)."""
+    from sentence_transformers import SentenceTransformer
+    return SentenceTransformer(model_name).encode(list(texts), normalize_embeddings=True, batch_size=64)
+
+
+def group_comments(entries, threshold=None, method="chars", embeddings=None):
     """Groups of near-identical entries. entries: one row per entry with Entry, Root_Cause, MATERIAL_NUMBER,
-    VENDOR_NAME, Days_Active. Returns (groups, variants):
+    VENDOR_NAME, Days_Active. method = 'chars' (similarity of the character 3-5-grams: same words, typos) or
+    'meaning' (similarity of sentence embeddings: paraphrases such as "No stockout detected" / "No stockout
+    apparent"); embeddings = function texts -> vectors for 'meaning' (default: embed). Returns (groups, variants):
       groups   one row per group: Group, Comment (most frequent wording), Variants, Occurrences, Materials,
                Vendors, Days_visible, Main_root_cause, Root_causes ("A 29 · B 22")
       variants one row per normalised wording with its Group and the reason it joined the group."""
@@ -90,13 +120,21 @@ def group_comments(entries, threshold=0.55):
     if variants.empty:
         return pd.DataFrame(), variants
 
-    vectors = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), sublinear_tf=True).fit_transform(variants["_norm"])
+    threshold = METHODS[method] if threshold is None else threshold
+    if method == "meaning":
+        vectors = np.asarray((embeddings or embed)(variants["Wording"]))
+        similarity = lambda anchors, i: vectors[anchors] @ vectors[i]
+        kind = "similar meaning"
+    else:
+        vectors = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), sublinear_tf=True).fit_transform(variants["_norm"])
+        similarity = lambda anchors, i: (vectors[anchors] @ vectors[i].T).toarray().ravel()
+        kind = "similar wording"
     words = [set(n.split()) for n in variants["_norm"]]
     anchors, group_of, reason = [], [], []
     for i in range(len(variants)):
         best, best_reason, best_score = None, "", 0.0
         if anchors:
-            scores = (vectors[anchors] @ vectors[i].T).toarray().ravel()
+            scores = similarity(anchors, i)
             for a, score in sorted(zip(anchors, scores), key=lambda x: -x[1]):
                 same_cause = variants.at[a, "Main_root_cause"] == variants.at[i, "Main_root_cause"]
                 no_cause = NO_ROOT_CAUSE in (variants.at[a, "Main_root_cause"], variants.at[i, "Main_root_cause"])
@@ -106,7 +144,7 @@ def group_comments(entries, threshold=0.55):
                     best, best_reason = a, "contained in the other wording, same root cause"
                 elif (same_cause or no_cause) and score >= threshold and score > best_score:
                     best, best_score = a, score
-                    best_reason = f"similar wording ({score:.2f}), " + ("same root cause" if same_cause else "no root cause entered")
+                    best_reason = f"{kind} ({score:.2f}), " + ("same root cause" if same_cause else "no root cause entered")
                 if best is not None and best_reason.startswith("contained"):
                     break
                 if score < threshold and best is not None:
@@ -123,7 +161,7 @@ def group_comments(entries, threshold=0.55):
                           for r, s in zip(reason, variants["Spellings"])]
 
     entries = entries.merge(variants[["_norm", "Group"]], on="_norm")
-    labels = variants.set_index(variants.index)["Wording"]
+    labels = variants.groupby("Group")["Wording"].agg(lambda w: neutral_label(list(w)))
     groups = (entries.groupby("Group")
               .agg(Occurrences=("Entry", "size"), Materials=("MATERIAL_NUMBER", "nunique"),
                    Vendors=("VENDOR_NAME", "nunique"), Days_visible=("Days_Active", "sum"),
@@ -176,25 +214,26 @@ def status_change(tracking, day_a, day_b, statuses=("Actual Stock Out",)):
 
 # ------------------------------------------------------------------ 3. root cause x impact
 def item_root_cause_impact(tracking):
-    """One row per (item, root cause): the most severe impact the item ever had ('Not assessed' if none)."""
+    """One row per (item, root cause): the most severe impact entered for the item ('Not communicated' if none)."""
     order = {level: i for i, level in enumerate(IMPACT_COLUMNS)}
     worst = (tracking.dropna(subset=["Impact_Level"]).assign(_r=lambda d: d["Impact_Level"].map(order))
              .sort_values("_r").groupby(ITEM)["Impact_Level"].first())
     pairs = tracking.dropna(subset=["Root_Cause"]).drop_duplicates(ITEM + ["Root_Cause"])[ITEM + ["Root_Cause"]]
     pairs = pairs.join(worst, on=ITEM)
-    pairs["Impact_Level"] = pairs["Impact_Level"].fillna("Not assessed")
+    pairs["Impact_Level"] = pairs["Impact_Level"].fillna(NOT_COMMUNICATED)
     return pairs
 
 
 def root_cause_impact(tracking, min_items=5):
-    """Contingency table root cause x impact (items), the chi-square test of independence on the assessed items,
-    Cramér's V, and per root cause: share of severe impacts (Production + Market) among the assessed items,
+    """Contingency table root cause x impact (items), the chi-square test of independence on the items whose impact was communicated,
+    Cramér's V, and per root cause: share of severe impacts (Production + Market) among the items whose
+    impact was communicated (items without impact entered are left out: their impact is unknown),
     lift vs all root causes and Fisher's exact test (this root cause vs the others)."""
     from scipy.stats import chi2_contingency, fisher_exact
 
     pairs = item_root_cause_impact(tracking)
     table = pd.crosstab(pairs["Root_Cause"], pairs["Impact_Level"]).reindex(columns=IMPACT_COLUMNS, fill_value=0)
-    assessed = table.drop(columns="Not assessed")
+    assessed = table.drop(columns=NOT_COMMUNICATED)
     tested = assessed[assessed.sum(axis=1) >= min_items]
     tested = tested.loc[:, tested.sum() > 0]
     chi2, p, dof, _ = chi2_contingency(tested)
@@ -210,7 +249,7 @@ def root_cause_impact(tracking, min_items=5):
         other_s, other_a = int(severe.sum() - s), int(total_assessed.sum() - a)
         p_cause = fisher_exact([[s, a - s], [other_s, other_a - other_s]], alternative="two-sided")[1] if a else np.nan
         rows.append({"Root cause": cause, "Stakeholder": stakeholder(cause), "Items": int(table.loc[cause].sum()),
-                     "Impact assessed": a, "Severe (Prod.+Market)": s,
+                     "Impact communicated": a, "Severe (Prod.+Market)": s,
                      "% severe": round(s / a * 100, 1) if a else np.nan,
                      "Lift": round(s / a / base, 2) if a and base else np.nan,
                      "p-value": round(p_cause, 4) if a else np.nan})
@@ -223,7 +262,8 @@ def root_cause_impact(tracking, min_items=5):
 # ------------------------------------------------------------------ 4. weak signals
 def weak_signal_items(tracking, comments_en):
     """One row per item with a comment: its first comment (in English), the root cause at that time, and
-    whether a severe impact (Production / Market) was entered LATER. Items already severe on the day of
+    whether a severe impact (Production / Market) was communicated LATER (False = none communicated, which may
+    also mean that the impact was never entered). Items already severe on the day of
     their first comment are left out: there is nothing to anticipate."""
     t = tracking.assign(Snapshot_Date=pd.to_datetime(tracking["Snapshot_Date"]))
     commented = t.dropna(subset=["Comment"]).sort_values("Snapshot_Date")

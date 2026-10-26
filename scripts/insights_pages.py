@@ -54,9 +54,17 @@ def _missing_tracking():
     st.warning("The tracking table is missing. Build it from the snapshots: `python scripts/tracking.py` (about 20 s).")
 
 
+@st.cache_resource(show_spinner="Loading the language model (first time only)...")
+def _embedding_model():
+    from sentence_transformers import SentenceTransformer
+    return SentenceTransformer(ins.EMBEDDING_MODEL)
+
+
 @st.cache_data(show_spinner="Grouping similar comments...")
-def _groups(entries, threshold):
-    return ins.group_comments(entries, threshold)
+def _groups(entries, threshold, method):
+    embeddings = (lambda texts: _embedding_model().encode(list(texts), normalize_embeddings=True, batch_size=64)) \
+        if method == "meaning" else None
+    return ins.group_comments(entries, threshold, method, embeddings)
 
 
 # ------------------------------------------------------------------ page 1
@@ -64,13 +72,18 @@ def page_grouped_comments(filtered_df, selection_name):
     ui.section("grouped-comments", "Most Frequent Comments, Grouped — " + selection_name)
     st.caption("Same table as 'Most Frequent Comments', but near-identical comments are counted as one issue "
                "(request of Johannes Höttler, 23.10). Every merge has a reason, shown under the table.")
-    c1, c2, c3 = st.columns([1, 1.4, 1.4])
+    c1, c2, c3, c4 = st.columns([0.8, 1.3, 1.3, 1.4])
     top_n = int(c1.selectbox("Select a view:", ["Top 10", "Top 20", "Top 50"], key="lab_top").split()[1])
+    method_label = c3.selectbox("Similarity of:", ["Wording (characters)", "Meaning (language model)"], key="lab_method",
+                                help="Wording: same words, typos, plural forms. Meaning: a small language model "
+                                     "(all-MiniLM-L6-v2, run on this machine, no data leaves it) also groups "
+                                     "paraphrases such as 'No stockout detected' / 'No stockout apparent'.")
+    method = "meaning" if method_label.startswith("Meaning") else "chars"
     which = c2.selectbox("Journal entries:", ["All entries", "Problem (first written entry)",
                                               "Latest status (most recent entry)"], key="lab_entries",
                          help="A comment cell is a journal written newest first: its last entry describes the "
                               "problem, its first entry the latest status.")
-    threshold = c3.slider("Similarity needed to merge two wordings:", 0.40, 0.90, 0.55, 0.05, key="lab_threshold",
+    threshold = c4.slider("Similarity needed to merge:", 0.40, 0.95, ins.METHODS[method], 0.05, key=f"lab_threshold_{method}",
                           help="Cosine similarity of the character sequences. Higher = stricter. Wordings with "
                                "different root causes are never merged, except when only case or punctuation differ.")
     mode = {"All entries": "all", "Problem (first written entry)": "problem",
@@ -79,7 +92,7 @@ def page_grouped_comments(filtered_df, selection_name):
     if entries.empty:
         st.info("No comments match the current filters.")
         return
-    groups, variants = _groups(entries.reset_index(drop=True), threshold)
+    groups, variants = _groups(entries.reset_index(drop=True), threshold, method)
 
     m1, m2, m3 = st.columns(3)
     m1.metric("Entries", f"{len(entries):,}")
@@ -114,12 +127,13 @@ def page_grouped_comments(filtered_df, selection_name):
             "are ignored (`PX13` = `px13`), whatever the root cause.\n"
             "2. **One wording contained in the other** (at most 3 more words) **and the same main root cause**: "
             "`px13` and `px13 - No stockout detected`.\n"
-            "3. **Similar wording** (similarity of the character sequences above the threshold) **and the same main "
-            "root cause**, or no root cause entered: `Request for Pull-in` and `Request to pull in the LT`.\n\n"
-            "A wording joins the group of the most frequent similar wording (no chains). The method is classic "
-            "text similarity rather than a neural network: on short, code-like comments (px13, LT, svc) it does as "
-            "well and every merge can be explained. A multilingual sentence-embedding model is the next step if "
-            "synonyms written differently (e.g. *expedite* / *pull-in*) must also be grouped.")
+            "3. **Similar wording or meaning** (above the threshold) **and the same main root cause**, or no root "
+            "cause entered: `Request for Pull-in` and `Request to pull in the LT`.\n\n"
+            "A wording joins the group of the most frequent similar wording (no chains). Two ways to measure the "
+            "similarity: **wording** (character sequences: same words, typos) or **meaning** (a small English "
+            "language model, *all-MiniLM-L6-v2*, run on this machine: it also groups paraphrases such as *No stockout "
+            "detected* / *No stockout apparent*, 0.89). Neither knows the supply-chain jargon: *expedite* and "
+            "*pull-in* stay apart (0.20 with the language model). The groups are made on the English translation.")
 
 
 # ------------------------------------------------------------------ page 2
@@ -199,28 +213,30 @@ def page_cause_impact(tracking, selection_name):
     if tracking is None:
         return _missing_tracking()
     st.caption("Is a root cause followed by more severe impacts than the others? Unit = item (material, vendor) "
-               "on all snapshots: its root cause(s) and the most severe impact it ever had. The impact is assessed "
-               "by planning (Market > Production > Logistics > No impact); 'Not assessed' = never entered.")
+               "on all snapshots: its root cause(s) and the most severe impact entered for it. The impact is entered "
+               "by planning (Market > Production > Logistics > None). 'Not communicated' = nothing entered: the impact "
+               "is unknown, which does not mean that there is none. The tests only use the items whose impact was "
+               "communicated.")
     try:
         table, per_cause, test = ins.root_cause_impact(tracking)
     except ValueError:
-        st.info("Not enough assessed items for the current filters.")
+        st.info("Not enough items with a communicated impact for the current filters.")
         return
     significant = test["p"] < 0.05
     st.markdown(
-        f"**Chi-square test of independence** on the {test['n_items']} assessed items of the {test['n_causes']} root "
+        f"**Chi-square test of independence** on the {test['n_items']} items with a communicated impact, for the {test['n_causes']} root "
         f"causes with at least 5 of them: χ² = {test['chi2']}, {test['dof']} degrees of freedom, "
         f"p = {test['p']:.2g} → " + ("root cause and impact are **not independent** (p < 0.05). " if significant else
                                      "no significant link between root cause and impact (p ≥ 0.05). ") +
         f"Cramér's V = **{test['cramers_v']}** "
         f"({'weak' if test['cramers_v'] < 0.2 else 'moderate' if test['cramers_v'] < 0.4 else 'strong'} association). "
-        f"Overall, {test['severe_base_pct']}% of the assessed items had a Production or Market impact.")
+        f"Overall, {test['severe_base_pct']}% of the items with a communicated impact had a Production or Market impact.")
 
-    min_items = st.slider("Root causes with at least ... assessed items:", 1, 30, 5, key="lab_min_items")
-    shown = per_cause[per_cause["Impact assessed"] >= min_items]
+    min_items = st.slider("Root causes with at least ... items with a communicated impact:", 1, 30, 5, key="lab_min_items")
+    shown = per_cause[per_cause["Impact communicated"] >= min_items]
     order = shown["Root cause"].tolist()
     if order:
-        assessed = table.loc[order].drop(columns="Not assessed")
+        assessed = table.loc[order].drop(columns=ins.NOT_COMMUNICATED)
         share = assessed.div(assessed.sum(axis=1), axis=0) * 100
         fig, ax = plt.subplots(figsize=(10, 0.42 * len(order) + 1.4))
         im = ax.imshow(share.to_numpy(), cmap="Reds", aspect="auto", vmin=0, vmax=100)
@@ -232,9 +248,9 @@ def page_cause_impact(tracking, selection_name):
                 if n:
                     ax.text(j, i, f"{share.iat[i, j]:.0f}%\n({n})", ha="center", va="center", fontsize=7,
                             color="white" if share.iat[i, j] > 60 else "black")
-        ax.set_title("Impact of the items per root cause (% of the assessed items, count in brackets)")
+        ax.set_title("Impact communicated per root cause (% of the items with an impact entered, count in brackets)")
         ax.spines[:].set_visible(False)
-        fig.colorbar(im, ax=ax, fraction=0.025, label="% of the assessed items")
+        fig.colorbar(im, ax=ax, fraction=0.025, label="% of the items with an impact entered")
         plt.tight_layout()
         st.pyplot(fig)
     st.dataframe(shown, use_container_width=True, hide_index=True,
@@ -258,14 +274,14 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name):
     ui.section("weak-signals", "Weak Signals — " + selection_name)
     if tracking is None:
         return _missing_tracking()
-    st.caption("Do the first comments on an item announce a Production or Market impact entered LATER? Unit = item "
+    st.caption("Do the first comments on an item announce a Production or Market impact communicated LATER? Unit = item "
                "(material, vendor) with a comment; items already severe when first commented are left out. The "
                "analysis uses all items (it needs volume); the sidebar filters apply to the watch list at the bottom.")
     items, terms, scores, weights = _weak_signals(tracking, comments_en)
     severe = items[items["Severe_later"]]
     m1, m2, m3 = st.columns(3)
     m1.metric("Items with a comment", f"{len(items):,}")
-    m2.metric("Severe impact entered later", f"{len(severe):,}", delta=f"{len(severe) / len(items) * 100:.1f}%",
+    m2.metric("Severe impact communicated later", f"{len(severe):,}", delta=f"{len(severe) / len(items) * 100:.1f}%",
               delta_color="off")
     m3.metric("Median warning time", f"{severe['Days_before_impact'].median():.0f} days",
               help="Days between the first comment and the first Production / Market impact.")
@@ -274,7 +290,8 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name):
     st.dataframe(terms.head(25), use_container_width=True, hide_index=True,
                  column_config={"p-value": st.column_config.NumberColumn(format="%.4f")})
     st.caption(f"Words or word pairs of at least 5 first comments. Lift = % severe later with this word ÷ "
-               f"{len(severe) / len(items) * 100:.1f}% for all items. p-value = one-sided Fisher's exact test.")
+               f"{len(severe) / len(items) * 100:.1f}% for all items. p-value = one-sided Fisher's exact test. "
+               "The other items had no Production / Market impact communicated, which does not prove that there was none.")
 
     ui.panel_header("Can the first comment predict the impact?")
     if scores.empty:
@@ -306,7 +323,7 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name):
                                   "MRP_CONTROLLER": "MRP Controller", "MATERIAL_DESC": "Material"}),
                  use_container_width=True, hide_index=True,
                  column_config={"First comment (EN)": st.column_config.TextColumn(width="large")})
-    st.caption(f"Items still visible on {last_day:%d.%m.%Y} without a Production / Market impact, ranked by the "
+    st.caption(f"Items still visible on {last_day:%d.%m.%Y} with no Production / Market impact communicated, ranked by the "
                "risk the model gives them (out-of-fold estimate). A ranking to look at first, not a forecast.")
 
 

@@ -70,7 +70,7 @@ def test_tracking_one_row_per_item_and_day_without_logins():
     day2 = t[(t["MATERIAL_NUMBER"] == 1) & (t["Snapshot_Date"] == "2026-09-08")].iloc[0]
     assert day2["MATERIAL_STATUS"] == "Actual Stock Out" and day2["Impact_Level"] == "Production" and day2["N_Lines"] == 2
     assert t["Comment"].dropna().tolist() == ["Request for pull-in"]                   # login removed
-    assert tr.impact_level("None (no impact)") == "No impact"
+    assert tr.impact_level("None (no impact)") == "None (no impact)" and tr.impact_level(None) is None
 
 
 def test_status_change_and_weak_signal_items():
@@ -84,8 +84,24 @@ def test_status_change_and_weak_signal_items():
 def test_root_cause_impact_table():
     t = pd.DataFrame({"MATERIAL_NUMBER": range(40), "VENDOR_ACCOUNT_NUMBER": 1,
                       "Root_Cause": ["A"] * 20 + ["B"] * 20,
-                      "Impact_Level": ["Production"] * 16 + ["No impact"] * 4 + ["Production"] * 4 + ["No impact"] * 16})
+                      "Impact_Level": ["Production"] * 16 + ["None (no impact)"] * 4 + ["Production"] * 4 + ["None (no impact)"] * 16})
     table, per_cause, test = ins.root_cause_impact(t)
     assert test["p"] < 0.05 and test["n_items"] == 40
     a = per_cause.set_index("Root cause").loc["A"]
     assert a["% severe"] == 80.0 and a["Lift"] == 1.6
+
+
+def test_label_of_a_group_whose_dates_vary():
+    assert ins.neutral_label(["25 estimated time of arrival 9/7-9/9", "40 estimated time of arrival 7/28"]) \
+        == "[n] estimated time of arrival [date]"
+    assert ins.neutral_label(["px13", "px13 Pilot"]) == "px13"                    # same numbers: unchanged
+
+
+def test_grouping_by_meaning_uses_the_given_embeddings():
+    vectors = {"no stockout detected": [1, 0], "no stockout apparent": [0.95, 0.31], "request for pull-in": [0, 1]}
+    fake = lambda texts: [vectors[t.lower()] for t in texts]               # no model download in the tests
+    groups, variants = ins.group_comments(entries([("No stockout detected", "D", 3), ("No stockout apparent", "D", 1),
+                                                   ("Request for pull-in", "D", 2)]), method="meaning", embeddings=fake)
+    group_of = dict(zip(variants["Wording"].str.lower(), variants["Group"]))
+    assert group_of["no stockout detected"] == group_of["no stockout apparent"] != group_of["request for pull-in"]
+    assert "similar meaning" in variants.set_index("Wording").loc["No stockout apparent", "Reason"]

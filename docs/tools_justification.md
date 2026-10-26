@@ -465,7 +465,7 @@ The tests do not call the real DeepL or Mistral API and do not evaluate the qual
 
 ---
 
-## **📌 15. Insights Lab: scikit-learn (v1.4.2) + SciPy (v1.17.1)**
+## **📌 15. Insights Lab: scikit-learn (v1.4.2) + SciPy (v1.17.1) + sentence-transformers (v3.4.1)**
 
 ### **Why?**
  | **Criteria**          | **Justification** |
@@ -479,12 +479,14 @@ The tests do not call the real DeepL or Mistral API and do not evaluate the qual
 - **`TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5))`** + cosine similarity: similar wordings, robust to typos and plural forms; merges also require the same main root cause.
 - **`CountVectorizer`** + **`scipy.stats.fisher_exact`**: words of the first comment followed by a severe impact more often than average (lift, one-sided test).
 - **`LogisticRegression(class_weight="balanced")`**, **`StratifiedKFold`**, **`matthews_corrcoef`**, **`roc_auc_score`**: can the first comment (and its root cause) predict a Production / Market impact? Out-of-fold probabilities rank the open items of the watch list.
-- **`scipy.stats.chi2_contingency`** + Cramér's V: independence of root cause and impact.
+- **`scipy.stats.chi2_contingency`** + Cramér's V: independence of root cause and impact (on the items whose impact was communicated only: an empty impact is unknown, not "no impact").
+- **`SentenceTransformer("all-MiniLM-L6-v2")`** (sentence-transformers + PyTorch, run on this Mac, ~90 MB model, 7 s for 1,504 texts): grouping by meaning, as an option next to the character similarity. Chosen over an embedding API (e.g. Mistral) because no comment leaves the machine; English model because the groups are made on the English translation.
 
 ### **Alternatives Considered**
  | **Alternative** | **Rejection Reason** |
  |-----------------|----------------------|
- | Multilingual sentence embeddings (e.g. `sentence-transformers`) | Would also group synonyms written differently (*expedite* / *pull-in*), but ~1 GB of dependencies, a model download, and merges harder to explain. Kept as the next step if the planners need it. |
+ | Embedding API (Mistral `mistral-embed`, OpenAI) | No installation, but the comments would leave the machine (pseudonymised); the local model is fast enough. |
+| Multilingual model on the German text | Larger (~470 MB); not needed since the groups are made on the English translation. Neither model knows the jargon (*expedite* / *pull-in*: 0.20). |
  | Fine-tuned transformers (BERT family), as in the reference paper | Too few labelled items (126 severe impacts) to fine-tune reliably; no gain expected on code-like texts. |
  | Topic models (LDA) | Topics are hard to name on very short comments; used only as a baseline in the reference paper. |
 
