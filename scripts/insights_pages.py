@@ -198,7 +198,7 @@ def page_grouped_comments(filtered_df, selection_name):
 
     table = groups.head(top_n).copy()
     table.insert(3, "% of entries", (table["Occurrences"] / len(entries) * 100).round(1))
-    st.dataframe(
+    ui.picked_table("t_grouped", 
         table.drop(columns=["Group", "Spellings"]).rename(columns={
             "Comment": "Comment (EN, most frequent wording)", "Variants": "Wordings grouped",
             "Days_visible": "Days visible (total)", "Main_root_cause": "Main root cause",
@@ -311,7 +311,7 @@ def page_trends_all(tracking, selection_name):
         st.markdown("**Items that entered the status, with their root cause and comment**")
         comments_en = st.session_state.get("_comments_en", {})
         shown = entered.assign(Comment_EN=entered["Comment"].map(comments_en).fillna(entered["Comment"]))
-        st.dataframe(shown[["Root_Cause", "Comment_EN", "VENDOR_NAME", "MRP_CONTROLLER", "MATERIAL_LABEL"]]
+        ui.picked_table("t_entered", shown[["Root_Cause", "Comment_EN", "VENDOR_NAME", "MRP_CONTROLLER", "MATERIAL_LABEL"]]
                      .rename(columns={"Root_Cause": "Root cause", "Comment_EN": "Comment (EN)", "VENDOR_NAME": "Vendor",
                                       "MRP_CONTROLLER": "MRP Controller", "MATERIAL_LABEL": "Material"}),
                      use_container_width=True, hide_index=True,
@@ -383,7 +383,7 @@ def page_cause_impact(tracking, selection_name):
             "entered (ION colours: red = Actual Stock Out, orange = Potential, yellow = Below Safety, green = Good).")
 
     # --- table
-    st.dataframe(shown.assign(Significant=np.where(shown["p-value"] < SIGNIFICANT, "Yes", "No"))
+    ui.picked_table("t_cause_impact", shown.assign(Significant=np.where(shown["p-value"] < SIGNIFICANT, "Yes", "No"))
                  .rename(columns={"Root cause": by, "Lift": "× average"})
                  [[by, "Stakeholder", "Items", "Impact communicated", "Severe (Prod.+Market)", "% severe", "× average",
                    "Significant", "p-value"]].drop(columns=["Stakeholder"] if by == "Stakeholder" else []),
@@ -533,7 +533,7 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
         top = phrases.head(12)
         st.pyplot(_bar_vs_average(top, "Phrase", "% impact later", base, "Phrases of the first comment",
                                   (top["p-value"] < SIGNIFICANT).tolist()))
-        st.dataframe(phrases.assign(Significant=np.where(phrases["p-value"] < SIGNIFICANT, "Yes", "No"))
+        ui.picked_table("t_phrases", phrases.assign(Significant=np.where(phrases["p-value"] < SIGNIFICANT, "Yes", "No"))
                      [["Phrase", "Items", "Impact later", "% impact later", "× average", "Significant", "Main root cause",
                        "Main vendors", "Example", "p-value"]],
                      use_container_width=True, hide_index=True, column_config={
@@ -641,7 +641,7 @@ def _watch_list(items, tracking, model):
     watch["Days since first comment"] = (last_day - watch["First_comment"]).dt.days
     watch = watch.sort_values("Risk", ascending=False).head(25)
     watch["Risk"] = (watch["Risk"] * 100).round(0)
-    st.dataframe(watch[["Risk", "Why", "Text", "VENDOR_NAME", "Root_Cause", "Status_now", "Days since first comment",
+    ui.picked_table("t_watch", watch[["Risk", "Why", "Text", "VENDOR_NAME", "Root_Cause", "Status_now", "Days since first comment",
                         "MRP_CONTROLLER", "MATERIAL_DESC"]]
                  .rename(columns={"Text": "First comment (EN)", "Root_Cause": "Root cause", "VENDOR_NAME": "Vendor",
                                   "Status_now": "Status now", "MRP_CONTROLLER": "MRP Controller", "MATERIAL_DESC": "Material"}),

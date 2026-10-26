@@ -64,7 +64,7 @@ Steps 1 to 6: `scripts/data_cleaning.py` and `data_cleaning.ipynb`; step 7: `scr
   - Load cleaned data (`cleaned_comments.csv`, cached with `st.cache_data`).
   - Sidebar filters in this order: **MRP controller, purchasing group, vendor, material, root cause, impact**, plus the period. Every filter is a **multiselect** (empty = All) and the filters **cascade** (each one only offers the values left by the filters above it).
   - **Saved views**: filters, period and table columns saved under a name and re-applied in one click (`data/interim/saved_views.json`, local, not pushed).
-  - Comments table with a **▥ Columns** panel (show/hide, drag and drop order).
+  - Comments table with a **▥ Columns** panel (show/hide, drag and drop order). Since 26.10 the panel floats over the table (`st.popover`, opens without reloading the page), under its header row, so the effect of each change is visible at once; the same panel is on the other large tables (most frequent comments, comments for a root cause, and the Insights Lab tables: grouped issues, items that entered a status, root cause × impact, phrases, watch list).
   - Comment-centred statistics (`scripts/stats_engine.py`): share of the selection vs all comments, root causes per vendor / MRP controller, where a root cause comes from, how long comments stay open, weekly trends; **Top 5 / 10 / 20** views.
   - **Smart Analysis**: written review of the selection (Part D).
 - **Tools**: `streamlit`, `streamlit-sortables`, `pandas`, `matplotlib`.

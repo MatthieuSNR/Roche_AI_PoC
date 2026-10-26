@@ -18,7 +18,6 @@ from entries import ENTRY_SEPARATOR
 from stats_engine import compute_stats, root_cause_sources, weekly_active, NO_ROOT_CAUSE
 import ui
 import insights_pages
-from streamlit_sortables import sort_items
 
 
 
@@ -171,14 +170,6 @@ st.session_state.setdefault("col_visible", list(DEFAULT_COLUMNS))
 
 def shown_columns():
     return [c for c in st.session_state["col_order"] if c in st.session_state["col_visible"]]
-
-
-def toggle_column(name):
-    visible = st.session_state["col_visible"]
-    if st.session_state[f"cb_{name}"]:
-        visible.append(name)
-    elif name in visible:
-        visible.remove(name)
 
 
 def set_columns(columns):
@@ -379,30 +370,10 @@ tab1, tab2, tab3, tab4, tab5, tab6, tab7 = [st.container() for _ in range(7)]
 
 with tab1:
     ui.section("filtered-comments", SECTION_TITLES["filtered-comments"])
-    # "▥ Columns" panel (right): tick the columns to show, drag them to change their order.
-    # A toggle rather than an expander: the panel stays open until the user closes it, and the
-    # drag-and-drop component is only drawn when visible (in a closed expander it gets no height).
-    _, menu_col = st.columns([1, 1])
-    with menu_col:
-        _, toggle_col = st.columns([2, 1])
-        show_menu = toggle_col.toggle("▥ Columns", key="show_column_menu")
-    if show_menu:
-        panel = menu_col.container(border=True)
-        c_check, c_order = panel.columns(2)
-        c_check.caption("Show / hide")
-        for name in st.session_state["col_order"]:
-            c_check.checkbox(name, value=name in st.session_state["col_visible"], key=f"cb_{name}",
-                             on_change=toggle_column, args=(name,))
-        with c_order:
-            st.caption("Order (drag and drop)")
-            visible = shown_columns()
-            if visible:
-                ordered = sort_items(visible, direction="vertical", key="col_sort_" + "|".join(visible))
-                if ordered and ordered != visible:
-                    st.session_state["col_order"] = ordered + [c for c in st.session_state["col_order"]
-                                                               if c not in ordered]
-                    st.rerun()
-    shown = shown_columns() or DEFAULT_COLUMNS
+    # "▥ Columns" (right): a panel floating over the table, under its header row (ui.column_picker).
+    # Same state as before (col_order / col_visible), so the saved views keep their columns.
+    shown = ui.table_toolbar("col", list(TABLE_COLUMNS.values()), DEFAULT_COLUMNS, order_key="col_order",
+                             visible_key="col_visible", checkbox_prefix="cb_") or DEFAULT_COLUMNS
     to_data = {v: k for k, v in TABLE_COLUMNS.items()}
     table_df = filtered_df.sort_values("Last_Seen", ascending=False)[[to_data[c] for c in shown]] \
         .rename(columns=TABLE_COLUMNS)
@@ -565,7 +536,7 @@ with tab3:
     top_comments_df.insert(2, "% of comments", (top_comments_df["Occurrences"] / max(len(filtered_df), 1) * 100).round(1))
 
     # Display as a clean table
-    st.dataframe(
+    ui.picked_table("t_frequent", 
         top_comments_df.rename(columns={"Comment_EN": "Comment (EN)", "Days_visible": "Days visible (total)",
                                         "Root_Cause": "Main root cause"}),
         use_container_width=True, hide_index=True,
@@ -606,7 +577,7 @@ with tab4:
 
         st.markdown("**Comments**")
         details = details.assign(Comment_EN=inline_entries(details["Comment_EN"]))
-        st.dataframe(
+        ui.picked_table("t_cause_details", 
             details.sort_values("Last_Seen", ascending=False)[
                 ["Comment_EN", "Days_Active", "VENDOR_LABEL", "PURCHASING_GROUP", "MRP_CONTROLLER", "MATERIAL_LABEL"]].rename(
                 columns={

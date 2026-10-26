@@ -518,3 +518,84 @@ def ai_result_html(text, meta):
 
 def ai_result(text, meta):
     st.markdown(ai_result_html(text, meta), unsafe_allow_html=True)
+
+
+# ---------------------------------------------------------------------------
+# Column picker of the tables: a floating panel ("popover") over the table
+# ---------------------------------------------------------------------------
+# The panel opens in the browser (no rerun, so it appears at once) and floats OVER the table instead of
+# pushing it down; it starts under the header row of the table, so the effect of every change on the
+# columns is visible straight away. Checkboxes show / hide a column; drag and drop changes the order.
+COLUMN_PICKER_CSS = """
+<style>
+/* the panel starts ~1 header row lower than the button: the column titles of the table stay visible;
+   compact (scrolls inside) so that it fits under the button, and above the fixed blue bar of the page */
+div[data-baseweb="popover"]:has(.col-picker) { z-index: 1000005 !important; }
+div[data-testid="stPopoverBody"]:has(.col-picker) {
+  margin-top: 38px; width: 460px; max-width: 92vw; max-height: 40vh; overflow-y: auto; padding-top: 6px;
+}
+div[data-testid="stPopoverBody"]:has(.col-picker) [data-testid="stCheckbox"] { margin-bottom: -10px; }
+.col-picker { display: none; }
+</style>
+"""
+
+
+def column_picker(key, columns, default=None, order_key=None, visible_key=None, checkbox_prefix=None):
+    """Panel '▥ Columns' for one table. columns = all displayed names, in their default order; default = the
+    columns shown at first (all if None). Returns the columns to show, in the chosen order. The state lives in
+    st.session_state (order_key, visible_key), so it survives reruns and can be saved in a view."""
+    from streamlit_sortables import sort_items
+
+    order_key = order_key or f"{key}_order"
+    visible_key = visible_key or f"{key}_visible"
+    prefix = checkbox_prefix or f"{key}_cb_"
+    st.session_state.setdefault(order_key, list(columns))
+    st.session_state.setdefault(visible_key, list(default if default is not None else columns))
+    # columns that appeared or disappeared since the state was created (e.g. another version of the table)
+    order = [c for c in st.session_state[order_key] if c in columns] + [c for c in columns if c not in st.session_state[order_key]]
+    st.session_state[order_key] = order
+    st.session_state[visible_key] = [c for c in st.session_state[visible_key] if c in columns]
+
+    def toggle(name):
+        visible = st.session_state[visible_key]
+        if st.session_state[f"{prefix}{name}"]:
+            if name not in visible:
+                visible.append(name)
+        elif name in visible:
+            visible.remove(name)
+
+    st.markdown(COLUMN_PICKER_CSS, unsafe_allow_html=True)
+    with st.popover("▥ Columns"):
+        st.markdown('<div class="col-picker"></div>', unsafe_allow_html=True)
+        c_check, c_order = st.columns(2)
+        c_check.caption("Show / hide")
+        for name in order:
+            c_check.checkbox(name, value=name in st.session_state[visible_key], key=f"{prefix}{name}",
+                             on_change=toggle, args=(name,))
+        with c_order:
+            st.caption("Order (drag and drop)")
+            shown = [c for c in order if c in st.session_state[visible_key]]
+            if shown:
+                ordered = sort_items(shown, direction="vertical", key=f"{key}_sort_" + "|".join(shown))
+                if ordered and ordered != shown:
+                    st.session_state[order_key] = ordered + [c for c in order if c not in ordered]
+                    st.rerun()
+    result = [c for c in st.session_state[order_key] if c in st.session_state[visible_key]]
+    return result or list(columns[:1])
+
+
+def table_toolbar(key, columns, default=None, **state_keys):
+    """Right-aligned '▥ Columns' button above a table; returns the columns to show."""
+    _, right = st.columns([6, 1])
+    with right:
+        return column_picker(key, columns, default, **state_keys)
+
+
+def picked_table(key, frame, hidden=(), **dataframe_kwargs):
+    """st.dataframe with a '▥ Columns' panel above it: every column of `frame` can be shown, hidden and
+    reordered (hidden = columns not shown at first). The choice is kept for the session."""
+    columns = list(frame.columns)
+    shown = table_toolbar(key, columns, [c for c in columns if c not in hidden])
+    dataframe_kwargs.setdefault("use_container_width", True)
+    dataframe_kwargs.setdefault("hide_index", True)
+    st.dataframe(frame[shown], **dataframe_kwargs)
