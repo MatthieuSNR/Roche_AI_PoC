@@ -12,6 +12,7 @@ Roche_AI_PoC/
 │   │   ├── translation_cache.csv          # Every DeepL translation already paid for (+ glossary version)
 │   │   ├── cleaned_comments_before_rebuild.csv  # Older build, its Comment_EN feeds the cache
 │   │   ├── deepl_glossary.json            # Id and hash of the glossary created on DeepL
+│   │   ├── embedding_cache.npz            # Vectors of the language model per comment (grouping by meaning)
 │   │   ├── abbreviations_for_review.xlsx  # Sheet for the planners: abbreviation, meaning, language
 │   │   ├── abbreviation_evidence.csv      # Real excerpts that justify the proposed meanings (read by --report)
 │   │   └── saved_views.json               # Saved views of the dashboard

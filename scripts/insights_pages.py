@@ -109,8 +109,8 @@ def _embedding_model():
 
 @st.cache_data(show_spinner="Grouping similar comments...")
 def _groups(entries, threshold, method):
-    embeddings = (lambda texts: _embedding_model().encode(list(texts), normalize_embeddings=True, batch_size=64)) \
-        if method == "meaning" else None
+    # vectors kept on disk: the model is only loaded for comments it has never seen
+    embeddings = (lambda texts: ins.embed(texts, load_model=_embedding_model)) if method == "meaning" else None
     return ins.group_comments(entries, threshold, method, embeddings)
 
 

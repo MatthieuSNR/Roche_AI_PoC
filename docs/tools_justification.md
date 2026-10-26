@@ -482,7 +482,7 @@ The tests do not call the real DeepL or Mistral API and do not evaluate the qual
 - **`CountVectorizer`** + **`scipy.stats.fisher_exact`**: words of the first comment followed by a severe impact more often than average (lift, one-sided test).
 - **`LogisticRegression(class_weight="balanced")`**, **`StratifiedKFold`**, **`matthews_corrcoef`**, **`roc_auc_score`**: can the first comment (and its root cause) predict a Production / Market impact? Out-of-fold probabilities rank the open items of the watch list.
 - **`scipy.stats.chi2_contingency`** + Cramér's V: independence of root cause and impact (on the items whose impact was communicated only: an empty impact is unknown, not "no impact").
-- **`SentenceTransformer("all-MiniLM-L6-v2")`** (sentence-transformers + PyTorch, run on this Mac, ~90 MB model, 7 s for 1,504 texts): grouping by meaning, as an option next to the character similarity. Chosen over an embedding API (e.g. Mistral) because no comment leaves the machine; English model because the groups are made on the English translation.
+- **`SentenceTransformer("all-MiniLM-L6-v2")`** (sentence-transformers + PyTorch, run on this Mac, ~90 MB model, 7 s for 1,504 texts): grouping by meaning, as an option next to the character similarity. Chosen over an embedding API (e.g. Mistral) because no comment leaves the machine; English model because the groups are made on the English translation. The vectors are kept on disk (`data/interim/embedding_cache.npz`): the model (~8 s to load) is only used for comments it has never seen, so switching to *Meaning* takes under a second.
 
 ### **Alternatives Considered**
  | **Alternative** | **Rejection Reason** |

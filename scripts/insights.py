@@ -19,6 +19,7 @@ Classic text features are used rather than a deep model: on short, code-like tex
 as good as transformers (Usuga-Cadavid et al., predictive maintenance logs) and every decision can be explained.
 """
 
+import os
 import re
 
 import numpy as np
@@ -94,10 +95,30 @@ EMBEDDING_MODEL = "sentence-transformers/all-MiniLM-L6-v2"   # 90 MB, runs on th
 METHODS = {"chars": 0.55, "meaning": 0.80}   # default similarity threshold of each method
 
 
-def embed(texts, model_name=EMBEDDING_MODEL):
-    """Sentence embeddings (normalised), computed locally. The model is downloaded once (Hugging Face cache)."""
-    from sentence_transformers import SentenceTransformer
-    return SentenceTransformer(model_name).encode(list(texts), normalize_embeddings=True, batch_size=64)
+EMBEDDING_CACHE = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "interim",
+                               "embedding_cache.npz")
+
+
+def embed(texts, model_name=EMBEDDING_MODEL, load_model=None, cache_path=EMBEDDING_CACHE):
+    """Sentence embeddings (normalised), computed locally and kept on disk (data/interim/embedding_cache.npz):
+    a text is encoded once; the model is only loaded when a text is not in the cache yet (it takes ~8 s).
+    load_model = function returning the model (the dashboard passes its cached one)."""
+    texts = list(texts)
+    cached = {}
+    if os.path.exists(cache_path):
+        with np.load(cache_path) as data:
+            if str(data["model"]) == model_name:
+                cached = dict(zip(data["texts"].tolist(), data["vectors"]))
+    missing = sorted({t for t in texts if t not in cached})
+    if missing:
+        if load_model is None:
+            from sentence_transformers import SentenceTransformer
+            load_model = lambda: SentenceTransformer(model_name)
+        vectors = load_model().encode(missing, normalize_embeddings=True, batch_size=64)
+        cached.update(zip(missing, np.asarray(vectors, dtype=np.float32)))
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        np.savez(cache_path, model=model_name, texts=np.array(list(cached)), vectors=np.stack(list(cached.values())))
+    return np.stack([cached[t] for t in texts])
 
 
 def group_comments(entries, threshold=None, method="chars", embeddings=None):
@@ -122,33 +143,38 @@ def group_comments(entries, threshold=None, method="chars", embeddings=None):
 
     threshold = METHODS[method] if threshold is None else threshold
     if method == "meaning":
-        vectors = np.asarray((embeddings or embed)(variants["Wording"]))
-        similarity = lambda anchors, i: vectors[anchors] @ vectors[i]
+        vectors = np.asarray((embeddings or embed)(variants["Wording"]), dtype=np.float32)
+        similarity_matrix = lambda: vectors @ vectors.T
         kind = "similar meaning"
     else:
         vectors = TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5), sublinear_tf=True).fit_transform(variants["_norm"])
-        similarity = lambda anchors, i: (vectors[anchors] @ vectors[i].T).toarray().ravel()
+        similarity_matrix = lambda: (vectors @ vectors.T).toarray()
         kind = "similar wording"
     words = [set(n.split()) for n in variants["_norm"]]
+    n_words = np.array([len(w) for w in words])
+    causes = variants["Main_root_cause"].to_numpy()
+    sim = similarity_matrix()          # all pairs at once (1,500 wordings: about 2 million similarities)
     anchors, group_of, reason = [], [], []
     for i in range(len(variants)):
-        best, best_reason, best_score = None, "", 0.0
+        best, best_reason = None, ""
         if anchors:
-            scores = similarity(anchors, i)
-            for a, score in sorted(zip(anchors, scores), key=lambda x: -x[1]):
-                same_cause = variants.at[a, "Main_root_cause"] == variants.at[i, "Main_root_cause"]
-                no_cause = NO_ROOT_CAUSE in (variants.at[a, "Main_root_cause"], variants.at[i, "Main_root_cause"])
-                small, big = sorted((words[a], words[i]), key=len)
-                contained = small <= big and len(big) - len(small) <= MAX_EXTRA_WORDS
-                if same_cause and contained:
-                    best, best_reason = a, "contained in the other wording, same root cause"
-                elif (same_cause or no_cause) and score >= threshold and score > best_score:
-                    best, best_score = a, score
-                    best_reason = f"{kind} ({score:.2f}), " + ("same root cause" if same_cause else "no root cause entered")
-                if best is not None and best_reason.startswith("contained"):
-                    break
-                if score < threshold and best is not None:
-                    break
+            a = np.asarray(anchors)
+            scores = sim[i, a]
+            same = causes[a] == causes[i]
+            # 1. contained in the other wording (at most MAX_EXTRA_WORDS more words), same root cause
+            close = a[same & (np.abs(n_words[a] - n_words[i]) <= MAX_EXTRA_WORDS)]
+            contained = [c for c in close if words[c] <= words[i] or words[i] <= words[c]]
+            if contained:
+                best = max(contained, key=lambda c: sim[i, c])
+                best_reason = "contained in the other wording, same root cause"
+            else:
+                # 2. similar wording / meaning, same root cause (or none entered): the most similar anchor
+                no_cause = (causes[a] == NO_ROOT_CAUSE) | (causes[i] == NO_ROOT_CAUSE)
+                ok = (same | no_cause) & (scores >= threshold)
+                if ok.any():
+                    j = int(np.argmax(np.where(ok, scores, -1.0)))
+                    best = int(a[j])
+                    best_reason = f"{kind} ({scores[j]:.2f}), " + ("same root cause" if same[j] else "no root cause entered")
         if best is None:
             anchors.append(i)
             group_of.append(i)

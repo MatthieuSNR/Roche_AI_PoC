@@ -142,3 +142,19 @@ def test_root_cause_status_takes_the_worst_status():
                       "MATERIAL_STATUS": ["Below Safety", "Actual Stock Out", "Unknown Status (Good Part)"]})
     table = ins.root_cause_status(t)
     assert table.loc["X", "Actual Stock Out"] == 1 and table.loc["X", "Good Part"] == 1
+
+
+def test_embeddings_are_cached_and_the_model_loaded_only_for_new_texts(tmp_path):
+    calls = []
+
+    class FakeModel:
+        def encode(self, texts, **_):
+            calls.append(list(texts))
+            return [[float(len(t)), 1.0] for t in texts]
+
+    path = tmp_path / "cache.npz"
+    first = ins.embed(["a", "bb"], load_model=FakeModel, cache_path=str(path))
+    again = ins.embed(["bb", "a"], load_model=FakeModel, cache_path=str(path))   # all cached: model not used
+    ins.embed(["a", "ccc"], load_model=FakeModel, cache_path=str(path))          # only the new text is encoded
+    assert calls == [["a", "bb"], ["ccc"]]
+    assert (again[1] == first[0]).all()
