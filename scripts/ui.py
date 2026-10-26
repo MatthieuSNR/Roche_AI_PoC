@@ -471,9 +471,16 @@ SECTION_NAMES = {"key findings", "what drives the issues", "early warnings", "ri
                  "recommended actions", "trend over time", "where the issues come from"}
 
 
-def _inline(text):
-    """Escape a line and keep **bold**."""
-    return re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", html.escape(text))
+def _inline(text, max_bold=1):
+    """Escape a line and keep **bold**: only the first max_bold bold phrases of a line, the others become plain
+    text (the model tends to bold half of the words, which makes nothing stand out)."""
+    count = 0
+
+    def bold(match):
+        nonlocal count
+        count += 1
+        return f"<b>{match.group(1)}</b>" if count <= max_bold else match.group(1)
+    return re.sub(r"\*\*(.+?)\*\*", bold, html.escape(text))
 
 
 def summary_to_html(text):

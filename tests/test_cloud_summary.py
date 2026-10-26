@@ -94,3 +94,10 @@ def test_prompt_knows_the_filters_and_drops_trivial_statistics():
     assert "top_vendors_pct_of_comments" not in prompt and "top_mrp_controllers_pct_of_comments" in prompt
     assert "The user filtered on: vendor = Acme" in prompt and "never write that the issues come from" in prompt
     assert "0.6× the average (less often than average)" in prompt          # ratios written out, not left to the model
+
+
+def test_alias_invented_by_the_model_becomes_a_neutral_label():
+    from pseudonymise import PromptPseudonymiser
+    p = PromptPseudonymiser(pd.DataFrame({"VENDOR_NAME": ["Acme Medical GmbH"], "PURCHASING_GROUP": ["G1 - Team"]}))
+    p.apply({"Acme Medical GmbH": 1, "G1 - Team": 2})
+    assert p.restore_text("Ask PGROUP_1 and PGROUP_7 about VENDOR_1") == "Ask G1 - Team and a purchasing group about Acme Medical GmbH"

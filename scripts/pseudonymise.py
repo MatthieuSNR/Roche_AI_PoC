@@ -161,6 +161,9 @@ def report(texts: list[str], patterns) -> pd.Series:
 ALIAS_LABELS = ("VENDOR", "MRP", "PGROUP", "MATERIAL", "EMAIL", "PERSON", "ID", "COMPANY", "QTY", "PRICE")
 ALIAS = re.compile(r"(?<![A-Za-z0-9_])((?:" + "|".join(ALIAS_LABELS) + r")_\d+)(?!\d)")
 NOT_AN_ENTITY = {"Unknown", "Unknown vendor", "None", ""}
+UNKNOWN_ALIAS = {"VENDOR": "a vendor", "MRP": "an MRP controller", "PGROUP": "a purchasing group", "MATERIAL": "a material",
+                 "EMAIL": "an e-mail address", "PERSON": "a person", "ID": "a number", "COMPANY": "the company",
+                 "QTY": "a quantity", "PRICE": "an amount"}
 
 
 def _vendor_key(name: str) -> str:
@@ -239,8 +242,9 @@ class PromptPseudonymiser:
         return obj
 
     def restore_text(self, text: str) -> str:
-        """Replace the aliases written by the model by the original values."""
-        return ALIAS.sub(lambda m: self.reverse.get(m.group(1), m.group(1)), text)
+        """Replace the aliases written by the model by the original values. An alias the request never
+        contained (invented by the model, e.g. PGROUP_3) becomes a neutral label instead of staying as a code."""
+        return ALIAS.sub(lambda m: self.reverse.get(m.group(1), UNKNOWN_ALIAS[m.group(1).split("_")[0]]), text)
 
     def stream_restored(self, pieces):
         """Restore aliases in a stream of text pieces. The last (possibly unfinished) word is
