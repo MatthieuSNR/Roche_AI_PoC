@@ -75,6 +75,9 @@ SIGNATURE = re.compile(
 # A signature in the middle of a line (a new entry typed after text) also opens a new entry
 INLINE_SIGNATURE = re.compile(rf"(?<=\S)[ \t]+(?={LOGIN}\s*,\s*\d{{4,5}}-\d{{1,2}}-\d{{1,2}}\s*:)")
 MAX_CHAIN = 10  # safety limit for chains of signatures
+# Text that says nothing ("abc12, 2026-05-29: n/a"): handled like an empty entry. pandas would also read
+# "n/a" back from the CSV as a missing value, which left empty comments in cleaned_comments.csv.
+PLACEHOLDER = re.compile(r"(?:n/?a|-+|\.+|\?+)", re.IGNORECASE)
 
 
 def parse_entry_date(text):
@@ -109,6 +112,8 @@ def split_entries(raw):
             dates.append(parse_entry_date(m.group("date")))
             rest = rest[m.end():]
         text = _squeeze(rest)
+        if PLACEHOLDER.fullmatch(text):
+            text = ""
         if authors or not entries:
             entries.append({"authors": authors, "dates": dates, "text": text})
         else:  # continuation of the previous entry
@@ -165,6 +170,13 @@ def merge_snapshots(snapshot_dir=SNAPSHOT_DIR, commented_only=False, verbose=Fal
     files = sorted(glob.glob(os.path.join(snapshot_dir, "*.csv")))
     if not files:
         raise FileNotFoundError(f"No snapshot CSV found in {snapshot_dir}")
+    # W27 exists twice: _Clean holds only its first day (29.06), _FullClean the whole week, and the rows of
+    # that day are identical in both. A _Clean file is skipped when the _FullClean of the same week exists.
+    skipped = [f for f in files if f.endswith("_Clean.csv") and f.replace("_Clean.csv", "_FullClean.csv") in files]
+    files = [f for f in files if f not in skipped]
+    if verbose:
+        for f in skipped:
+            print(f"  skipped: {os.path.basename(f)} (included in {os.path.basename(f).replace('_Clean', '_FullClean')})")
     parts, total, started = [], 0, time.time()
     for i, file in enumerate(files, 1):
         df = pd.read_csv(file, low_memory=False)
@@ -173,7 +185,7 @@ def merge_snapshots(snapshot_dir=SNAPSHOT_DIR, commented_only=False, verbose=Fal
         if verbose:   # progress, to see that the reading advances
             print(f"  file {i}/{len(files)} read: {os.path.basename(file)} ({time.time() - started:.0f} s)", flush=True)
     df = pd.concat(parts, ignore_index=True).rename(columns={"Issue": "Root_Cause", "comment": "Comment"})
-    df.attrs.update(rows_total=total, n_files=len(files), seconds=round(time.time() - started, 1))
+    df.attrs.update(rows_total=total, n_files=len(files), n_skipped=len(skipped), seconds=round(time.time() - started, 1))
     return df
 
 
@@ -188,7 +200,7 @@ def keep_commented_rows(df):
 def split_journal(df, keep_raw=False):
     """STEP 3. Cut every comment cell into its entries and remove the signatures.
     Comment = entries joined by ENTRY_SEPARATOR; adds N_Entries, N_Authors, First_Entry_Date, Last_Entry_Date.
-    Rows whose comment is only a signature are dropped. keep_raw=True keeps the cell as written in
+    Rows whose comment is only a signature (or says nothing: "n/a", "-") are dropped. keep_raw=True keeps the cell as written in
     Comment_Raw (it contains the logins: for checking in the notebook only, never saved)."""
     df = df.copy()
     parsed = {c: parse_comment(c) for c in df["Comment"].dropna().unique()}   # each distinct cell once
@@ -210,7 +222,9 @@ def deduplicate_comments(df):
     (First_Seen, Last_Seen, N_Snapshots, Days_Active). Other columns: latest known value."""
     df = df.copy()
     df["Snapshot_Date"] = pd.to_datetime(df["Snapshot_Date"], errors="coerce")
-    df = df.dropna(subset=["Snapshot_Date"]).sort_values("Snapshot_Date")
+    # Stable sort: a material can have several order lines on the same day; their order must not change
+    # from one run to the next, otherwise the "latest value" of PO_QTY, Delay... changes too
+    df = df.dropna(subset=["Snapshot_Date"]).sort_values("Snapshot_Date", kind="stable")
     key = ["MATERIAL_NUMBER", "VENDOR_ACCOUNT_NUMBER", "Comment"]
     grouped = df.groupby(key, dropna=False, sort=False)
 

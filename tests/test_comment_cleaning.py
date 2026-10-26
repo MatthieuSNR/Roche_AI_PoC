@@ -61,6 +61,9 @@ def test_comment_without_signature_and_empty_comments():
     assert p["entries"] == ["kein Stockout"] and p["n_authors"] == 0 and pd.isna(p["first_entry_date"])
     assert dc.parse_comment(None) is None
     assert dc.parse_comment("abc12, 2026-01-01:   ") is None
+    assert dc.parse_comment("abc12, 2026-05-29: n/a") is None                 # says nothing
+    assert dc.parse_comment("abc12, 2026-05-29: n/a\nabc12, 2026-05-28: ETA KW34")["entries"] == ["ETA KW34"]
+    assert dc.parse_comment("abc12, 2026-05-29: n/a vom Lieferanten")["entries"] == ["n/a vom Lieferanten"]
 
 
 def test_a_date_in_the_text_is_not_a_signature():
@@ -196,6 +199,15 @@ def test_step1_merge_and_step2_keep_commented():
     assert light.attrs["rows_total"] == 6 and light.attrs["n_files"] == 2 and len(light) == 4   # NaN rows dropped
     kept = dc.keep_commented_rows(merged)
     assert len(kept) == 3 and kept["Comment"].str.strip().ne("").all()                          # blank cell dropped too
+
+
+def test_step1_skips_a_partial_week_included_in_its_full_version():
+    folder = _snapshot_dir()
+    os.rename(os.path.join(folder, "W2.csv"), os.path.join(folder, "W2_FullClean.csv"))
+    pd.read_csv(os.path.join(folder, "W1.csv")).to_csv(os.path.join(folder, "W1_Clean.csv"), index=False)
+    pd.read_csv(os.path.join(folder, "W1.csv")).to_csv(os.path.join(folder, "W2_Clean.csv"), index=False)
+    merged = dc.merge_snapshots(folder)
+    assert merged.attrs["n_skipped"] == 1 and merged.attrs["n_files"] == 3      # W2_Clean skipped, W1_Clean kept
 
 
 def test_step3_split_journal_removes_logins_and_marks_the_entries():
