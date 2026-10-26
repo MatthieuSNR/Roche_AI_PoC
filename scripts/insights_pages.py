@@ -1,12 +1,16 @@
 """
-Insights Lab: the new pages of the dashboard, reached from the second row of the top menu (?page=...).
+Insights Lab: the new pages of the dashboard, reached from the second row of the top menu.
 They are being validated: the existing page (app.py) is left unchanged until a new page replaces a section.
-The sidebar filters of app.py apply here too. The analyses themselves are in scripts/insights.py.
+The sidebar filters (and the timeframe) of app.py apply here too. The analyses are in scripts/insights.py.
 
   grouped-comments   Most frequent comments, near-identical wordings grouped (US24)
   trends-all         Root cause trends on all snapshot rows + what changed between two weeks (US26)
-  cause-impact       Root cause x impact: is a root cause followed by more severe impacts?
-  weak-signals       Do the first comments announce a Production / Market impact to come?
+  cause-impact       Which root causes lead to which impact and material status
+  weak-signals       Which first comments (phrases, vendor, root cause, status) announce an impact to come
+
+Written for planners, buyers and managers: plain-language insights and coloured charts first; how to read
+them in boxes that can be hidden ("Show explanations"); the statistics in a folded "Statistical details"
+panel for whoever wants the reasoning; a "?" on every indicator.
 """
 
 import os
@@ -27,6 +31,21 @@ PAGES = [
     ("weak-signals", "Weak Signals"),
 ]
 LAB_LABEL = "Insights Lab · new pages to validate"
+IMPACT_COLORS = {"Market": "#9B1C1C", "Production": "#E0443A", "Logistics": "#F5C518", "None (no impact)": "#2FA84F"}
+SIGNIFICANT = 0.05
+
+# Tooltips ("?") of the indicators: what it is, and how to read it
+HELP = {
+    "lift": "How many times more often than average. 1.0 = like the average; 2.0 = twice as often; "
+            "0.5 = half as often.",
+    "p": "How likely the difference would appear by pure chance. Below 0.05 (5%): unlikely to be chance, the "
+         "link is considered real. Above: it may be chance, read with care.",
+    "significant": "Yes = the difference with the average is unlikely to be chance (p-value below 0.05).",
+    "severe": "Share of the items whose communicated impact is Production or Market.",
+    "communicated": "Items for which planning entered an impact. Items without an impact entered are left out: "
+                    "their impact is unknown (not communicated), which does not mean there is none.",
+    "impact_later": "Share of the items that received a Production or Market impact AFTER this first comment.",
+}
 
 
 @st.cache_data
@@ -34,6 +53,7 @@ def load_tracking():
     if not os.path.exists(TRACKING_PATH):
         return None
     t = pd.read_csv(TRACKING_PATH)
+    t["Snapshot_Date"] = pd.to_datetime(t["Snapshot_Date"])
     t["MATERIAL_LABEL"] = t["MATERIAL_DESC"].fillna("No description") + " — " + t["MATERIAL_NUMBER"].astype("int64").astype(str)
     t["VENDOR_LABEL"] = (t["VENDOR_NAME"].fillna("Unknown vendor") + " — "
                          + t["VENDOR_ACCOUNT_NUMBER"].astype("Int64").astype(str).replace("<NA>", "no vendor"))
@@ -42,12 +62,39 @@ def load_tracking():
     return t
 
 
-def filter_tracking(tracking, selections):
-    """Same sidebar filters as the comments (the impact filter is left out: it is analysed here)."""
+def filter_tracking(tracking, selections, period=None):
+    """Same sidebar filters as the comments (the impact filter is left out: it is analysed here) + the timeframe."""
     for column, selected in selections.items():
         if selected and column in tracking.columns:
             tracking = tracking[tracking[column].isin(selected)]
+    if period:
+        start, end = period
+        tracking = tracking[(tracking["Snapshot_Date"] >= start) & (tracking["Snapshot_Date"] <= end)]
     return tracking
+
+
+# ------------------------------------------------------------------ explanations
+def explanations_toggle():
+    st.session_state.setdefault("lab_explain", True)
+    st.toggle("Show explanations", key="lab_explain",
+              help="Boxes that explain how to read each chart and table. The statistical details stay in the "
+                   "folded panels at the bottom of each section.")
+
+
+def explain(text):
+    """A 'how to read' box, shown when 'Show explanations' is on."""
+    if st.session_state.get("lab_explain", True):
+        st.info(text)
+
+
+def details(title="Statistical details (for analysts)"):
+    return st.expander(title, expanded=False)
+
+
+def insights_box(lines):
+    """The main findings of a page, in plain words."""
+    if lines:
+        st.success("\n\n".join(lines))
 
 
 def _missing_tracking():
@@ -67,38 +114,67 @@ def _groups(entries, threshold, method):
     return ins.group_comments(entries, threshold, method, embeddings)
 
 
+def _stacked_bars(shares, counts, colors, title, xlabel, notes=None):
+    """Horizontal 100% bars: one row per category, one coloured segment per column; counts written in segments."""
+    fig, ax = plt.subplots(figsize=(11, 0.42 * len(shares) + 1.6))
+    left = np.zeros(len(shares))
+    labels = [c if len(c) <= 42 else c[:41] + "…" for c in shares.index]
+    for column in shares.columns:
+        values = shares[column].to_numpy()
+        ax.barh(labels, values, left=left, color=colors[column], label=column, edgecolor="white", linewidth=0.8)
+        for i, (v, n) in enumerate(zip(values, counts[column].to_numpy())):
+            if v >= 7:
+                dark = colors[column] in ("#F5C518",)
+                ax.text(left[i] + v / 2, i, f"{v:.0f}%", ha="center", va="center", fontsize=7.5,
+                        color="black" if dark else "white")
+        left += values
+    if notes is not None:
+        for i, note in enumerate(notes):
+            ax.text(101.5, i, note, va="center", fontsize=7.5, color="#374151")
+    ax.set_xlim(0, 100)
+    ax.invert_yaxis()
+    ax.set_xlabel(xlabel)
+    ax.set_title(title)
+    ax.legend(ncol=len(shares.columns), loc="upper center", bbox_to_anchor=(0.5, -0.06 - 0.6 / (len(shares) + 3)),
+              frameon=False, fontsize=8)
+    ax.tick_params(axis="y", labelsize=8)
+    ax.spines[["top", "right", "bottom"]].set_visible(False)
+    plt.tight_layout()
+    return fig
+
+
 # ------------------------------------------------------------------ page 1
 def page_grouped_comments(filtered_df, selection_name):
     ui.section("grouped-comments", "Most Frequent Comments, Grouped — " + selection_name)
-    st.caption("Same table as 'Most Frequent Comments', but near-identical comments are counted as one issue "
-               "(request of Johannes Höttler, 23.10). Every merge has a reason, shown under the table.")
-    c1, c2, c3, c4 = st.columns([0.8, 1.3, 1.3, 1.4])
+    explanations_toggle()
+    explain("Same table as 'Most Frequent Comments', but comments that say the same thing in slightly different "
+            "words are counted as **one issue**, e.g. `PX13` and `px13 - No stockout detected`.\n\n"
+            "Each line is an issue; the table under it shows which wordings were grouped, and why.")
+    c1, c2, c3 = st.columns([0.8, 1.4, 1.4])
     top_n = int(c1.selectbox("Select a view:", ["Top 10", "Top 20", "Top 50"], key="lab_top").split()[1])
-    method_label = c3.selectbox("Similarity of:", ["Wording (characters)", "Meaning (language model)"], key="lab_method",
+    method_label = c2.selectbox("Group comments with a similar:", ["Wording (characters)", "Meaning (language model)"],
+                                key="lab_method",
                                 help="Wording: same words, typos, plural forms. Meaning: a small language model "
-                                     "(all-MiniLM-L6-v2, run on this machine, no data leaves it) also groups "
-                                     "paraphrases such as 'No stockout detected' / 'No stockout apparent'.")
+                                     "(run on this machine, no data leaves it) also groups paraphrases such as "
+                                     "'No stockout detected' / 'No stockout apparent'.")
     method = "meaning" if method_label.startswith("Meaning") else "chars"
-    which = c2.selectbox("Journal entries:", ["All entries", "Problem (first written entry)",
-                                              "Latest status (most recent entry)"], key="lab_entries",
-                         help="A comment cell is a journal written newest first: its last entry describes the "
-                              "problem, its first entry the latest status.")
-    threshold = c4.slider("Similarity needed to merge:", 0.40, 0.95, ins.METHODS[method], 0.05, key=f"lab_threshold_{method}",
-                          help="Cosine similarity of the character sequences. Higher = stricter. Wordings with "
-                               "different root causes are never merged, except when only case or punctuation differ.")
-    mode = {"All entries": "all", "Problem (first written entry)": "problem",
-            "Latest status (most recent entry)": "latest"}[which]
-    entries = ins.comment_entries(filtered_df, mode)[["Entry", "Root_Cause", "MATERIAL_NUMBER", "VENDOR_NAME", "Days_Active"]]
+    threshold = c3.slider("How similar to be grouped:", 0.40, 0.95, ins.METHODS[method], 0.05, key=f"lab_threshold_{method}",
+                          help="Higher = stricter (fewer, more certain groups). Lower = more comments grouped. "
+                               "Comments with different root causes are never grouped, except when only the case "
+                               "or the punctuation differs.")
+    entries = ins.comment_entries(filtered_df)[["Entry", "Root_Cause", "MATERIAL_NUMBER", "VENDOR_NAME", "Days_Active"]]
     if entries.empty:
         st.info("No comments match the current filters.")
         return
     groups, variants = _groups(entries.reset_index(drop=True), threshold, method)
 
     m1, m2, m3 = st.columns(3)
-    m1.metric("Entries", f"{len(entries):,}")
-    m2.metric("Distinct wordings", f"{entries['Entry'].nunique():,}")
-    m3.metric("Issues after grouping", f"{len(groups):,}",
-              delta=f"{len(groups) - entries['Entry'].nunique():,}", delta_color="off")
+    m1.metric("Entries", f"{len(entries):,}", help="Journal entries of the comments of the selection (a comment "
+                                                    "cell can hold several dated entries).")
+    m2.metric("Distinct wordings", f"{entries['Entry'].nunique():,}", help="Different texts, before grouping.")
+    m3.metric("Issues after grouping", f"{len(groups):,}", delta=f"{len(groups) - entries['Entry'].nunique():,}",
+              delta_color="off", help="Distinct issues once the similar wordings are grouped. The smaller this "
+                                      "number compared with the wordings, the more repetition in the comments.")
 
     table = groups.head(top_n).copy()
     table.insert(3, "% of entries", (table["Occurrences"] / len(entries) * 100).round(1))
@@ -108,25 +184,29 @@ def page_grouped_comments(filtered_df, selection_name):
             "Days_visible": "Days visible (total)", "Main_root_cause": "Main root cause",
             "Root_causes": "Root causes (entries)"}),
         use_container_width=True, hide_index=True,
-        column_config={"Comment (EN, most frequent wording)": st.column_config.TextColumn(width="large"),
-                       "Root causes (entries)": st.column_config.TextColumn(width="large")})
-    st.caption("Occurrences = entries of the group. Wordings grouped = different texts after normalisation. "
-               "Main root cause = most frequent root cause entered with these comments (empty ones left aside).")
+        column_config={
+            "Comment (EN, most frequent wording)": st.column_config.TextColumn(width="large"),
+            "Occurrences": st.column_config.NumberColumn(help="Number of entries of this issue."),
+            "% of entries": st.column_config.NumberColumn(help="Share of all the entries of the selection."),
+            "Wordings grouped": st.column_config.NumberColumn(help="How many different wordings were grouped."),
+            "Days visible (total)": st.column_config.NumberColumn(help="Total days these comments stayed in the dashboard."),
+            "Root causes (entries)": st.column_config.TextColumn(width="large", help="Root causes entered with these "
+                                                                                     "comments, with their count.")})
 
     ui.panel_header("Why were these wordings grouped?")
-    choice = st.selectbox("Group:", table["Comment"].tolist(), key="lab_group")
+    choice = st.selectbox("Issue:", table["Comment"].tolist(), key="lab_group")
     group_id = table.loc[table["Comment"] == choice, "Group"].iloc[0]
     st.dataframe(variants[variants["Group"] == group_id][["Wording", "Occurrences", "Main_root_cause", "Reason"]]
                  .rename(columns={"Main_root_cause": "Main root cause"}),
                  use_container_width=True, hide_index=True,
                  column_config={"Wording": st.column_config.TextColumn(width="large"),
                                 "Reason": st.column_config.TextColumn(width="large")})
-    with st.expander("How the grouping works"):
+    with details("How the grouping works"):
         st.markdown(
             "1. **Same text after normalisation**: case, punctuation and the spellings of *stock-out* and *pull-in* "
-            "are ignored (`PX13` = `px13`), whatever the root cause.\n"
+            "are ignored (`PX13` = `px13`), whatever the root cause.\n\n"
             "2. **One wording contained in the other** (at most 3 more words) **and the same main root cause**: "
-            "`px13` and `px13 - No stockout detected`.\n"
+            "`px13` and `px13 - No stockout detected`.\n\n"
             "3. **Similar wording or meaning** (above the threshold) **and the same main root cause**, or no root "
             "cause entered: `Request for Pull-in` and `Request to pull in the LT`.\n\n"
             "A wording joins the group of the most frequent similar wording (no chains). Two ways to measure the "
@@ -141,28 +221,32 @@ def page_trends_all(tracking, selection_name):
     ui.section("trends-all", "Root Cause Trends (all snapshots) — " + selection_name)
     if tracking is None:
         return _missing_tracking()
-    with_cause = tracking.dropna(subset=["Root_Cause"])
-    items_rc = with_cause.groupby(ins.ITEM).ngroups
-    items_rc_no_comment = (with_cause.groupby(ins.ITEM)["Comment"].count() == 0).sum()
-    st.caption(f"Counted on every snapshot row, commented or not: {items_rc:,} items (material, vendor) with a root "
-               f"cause, of which {items_rc_no_comment:,} never had a comment (they are missing from the existing trend). "
-               "One item counts once per week, however many order lines and days it has.")
+    explanations_toggle()
+    explain("How many items (a material from a vendor) carried each root cause, week by week, over the timeframe "
+            "chosen in the sidebar. Every snapshot row counts, also the ones without a comment.\n\n"
+            "A rising line = a cause that concerns more and more items.")
+    if tracking.empty:
+        st.info("No data for the current filters and timeframe.")
+        return
     c1, c2 = st.columns([1, 3])
     by = c1.radio("Group by:", ["Root cause", "Stakeholder"], key="lab_trend_by",
-                  help="Stakeholder = prefix of the root cause (S = Supplier, PL = Planning, P = Procurement, "
-                       "B = Buying...; legend of Johannes Höttler).")
+                  help="Stakeholder = who is responsible, from the prefix of the root cause (S = Supplier, "
+                       "PL = Planning, P = Procurement, B = Buying...; legend of Johannes Höttler).")
     weekly = ins.weekly_items(tracking, "Root_Cause" if by == "Root cause" else "Stakeholder")
     if weekly.empty:
         st.info("No root cause for the current filters.")
     else:
         ranking = weekly.sum().sort_values(ascending=False).index.tolist()
-        shown = c2.multiselect("Lines to display (default: the 6 largest):", ranking, default=ranking[:6], key=f"lab_lines_{by}")
+        shown = c2.multiselect("Lines to display (default: the 6 largest):", ranking, default=ranking[:6],
+                               key=f"lab_lines_{by}")
         if shown:
             fig, ax = plt.subplots(figsize=(12, 5.5))
             colors = plt.cm.tab20.colors if len(shown) > 8 else None
             for i, name in enumerate(shown):
                 ax.plot(weekly.index, weekly[name], marker="o", markersize=3, label=name,
                         color=colors[i % 20] if colors else None)
+            ax.set_xlim(weekly.index.min() - pd.Timedelta(days=3), weekly.index.max() + pd.Timedelta(days=3))
+            ax.set_ylim(bottom=0)
             ax.set_title(f"Items per {by.lower()} and week — {selection_name}")
             ax.set_ylabel("Items with this root cause during the week")
             ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
@@ -175,15 +259,18 @@ def page_trends_all(tracking, selection_name):
                                    "Peak": weekly[shown].max(), "Peak week": weekly[shown].idxmax().dt.strftime("%d.%m")})
             change["Change"] = change.iloc[:, 1] - change.iloc[:, 0]
             st.dataframe(change.reset_index().rename(columns={"index": by, "Root_Cause": by, "Stakeholder": by}),
-                         use_container_width=True, hide_index=True)
+                         use_container_width=True, hide_index=True,
+                         column_config={"Change": st.column_config.NumberColumn(
+                             help="Items in the last week minus items in the first week of the timeframe.")})
 
     ui.panel_header("What changed between two weeks?")
-    st.caption("Why are there more (or fewer) stock-outs this week? Items in the status at the end of each week, "
-               "and the root causes of the items that entered or left it (US26, Johannes Höttler).")
+    explain("Why are there more (or fewer) stock-outs this week? The items in the status at the end of each week, "
+            "and the root causes of the items that **entered** or **left** it.\n\n"
+            "Read the table from the top: the root causes with the largest net change explain the difference.")
     ends = ins.week_end_days(tracking)
     weeks = sorted(ends)
     if len(weeks) < 2:
-        st.info("Not enough weeks for the current filters.")
+        st.info("Not enough weeks in the timeframe.")
         return
     c1, c2, c3 = st.columns([1.6, 1, 1])
     statuses = c1.multiselect("Status:", ["Actual Stock Out", "Potential Stock Out"], default=["Actual Stock Out"],
@@ -194,8 +281,12 @@ def page_trends_all(tracking, selection_name):
     if not statuses:
         return
     summary, entered, n_a, n_b = ins.status_change(tracking, ends[week_a], ends[week_b], tuple(statuses))
-    st.metric(f"Items in {' / '.join(statuses)}", f"{n_a} → {n_b}", delta=f"{n_b - n_a:+d}", delta_color="inverse")
-    st.dataframe(summary, use_container_width=True, hide_index=True)
+    st.metric(f"Items in {' / '.join(statuses)}", f"{n_a} → {n_b}", delta=f"{n_b - n_a:+d}", delta_color="inverse",
+              help="Number of items in the status on the last snapshot of each week, and the difference.")
+    st.dataframe(summary, use_container_width=True, hide_index=True, column_config={
+        "Entered": st.column_config.NumberColumn(help="Items in the status in the second week but not in the first."),
+        "Left": st.column_config.NumberColumn(help="Items in the status in the first week but no longer in the second."),
+        "Net change": st.column_config.NumberColumn(help="Entered minus left: the contribution of this root cause.")})
     if len(entered):
         st.markdown("**Items that entered the status, with their root cause and comment**")
         comments_en = st.session_state.get("_comments_en", {})
@@ -212,126 +303,309 @@ def page_cause_impact(tracking, selection_name):
     ui.section("cause-impact", "Root Cause × Impact — " + selection_name)
     if tracking is None:
         return _missing_tracking()
-    st.caption("Is a root cause followed by more severe impacts than the others? Unit = item (material, vendor) "
-               "on all snapshots: its root cause(s) and the most severe impact entered for it. The impact is entered "
-               "by planning (Market > Production > Logistics > None). 'Not communicated' = nothing entered: the impact "
-               "is unknown, which does not mean that there is none. The tests only use the items whose impact was "
-               "communicated.")
+    explanations_toggle()
+    explain("**Which root causes lead to which impact?** For every item (a material from a vendor) of the timeframe: "
+            "its root cause(s), the most severe impact planning communicated for it, and its material status.\n\n"
+            "Impact levels, from the most severe: **Market** > **Production** > **Logistics** > **None** (planning "
+            "entered that there is no impact). Items without any impact entered are **not communicated**: their "
+            "impact is unknown, so they are left out of the impact chart.")
+    by = st.radio("Show by:", ["Root cause", "Stakeholder"], horizontal=True, key="lab_impact_by",
+                  help="Stakeholder = who is responsible, from the prefix of the root cause (S = Supplier, "
+                       "PL = Planning, P = Procurement, B = Buying...).")
+    data = tracking if by == "Root cause" else tracking.assign(
+        Root_Cause=tracking["Root_Cause"].map(lambda c: ins.stakeholder(c) if pd.notna(c) else c))
     try:
-        table, per_cause, test = ins.root_cause_impact(tracking)
+        table, per_cause, test = ins.root_cause_impact(data)
     except ValueError:
-        st.info("Not enough items with a communicated impact for the current filters.")
+        st.info("Not enough items with a communicated impact for the current filters and timeframe.")
         return
-    significant = test["p"] < 0.05
-    st.markdown(
-        f"**Chi-square test of independence** on the {test['n_items']} items with a communicated impact, for the {test['n_causes']} root "
-        f"causes with at least 5 of them: χ² = {test['chi2']}, {test['dof']} degrees of freedom, "
-        f"p = {test['p']:.2g} → " + ("root cause and impact are **not independent** (p < 0.05). " if significant else
-                                     "no significant link between root cause and impact (p ≥ 0.05). ") +
-        f"Cramér's V = **{test['cramers_v']}** "
-        f"({'weak' if test['cramers_v'] < 0.2 else 'moderate' if test['cramers_v'] < 0.4 else 'strong'} association). "
-        f"Overall, {test['severe_base_pct']}% of the items with a communicated impact had a Production or Market impact.")
+    min_items = st.slider(f"Show the {by.lower()}s with at least ... items with a communicated impact:", 1, 30, 5,
+                          key="lab_min_items", help="Small numbers give unstable percentages: 5 or more is a good minimum.")
+    shown = per_cause[per_cause["Impact communicated"] >= min_items].sort_values("% severe", ascending=False)
+    if shown.empty:
+        st.info("No root cause reaches this minimum; lower it.")
+        return
 
-    min_items = st.slider("Root causes with at least ... items with a communicated impact:", 1, 30, 5, key="lab_min_items")
-    shown = per_cause[per_cause["Impact communicated"] >= min_items]
+    # --- main findings in plain words
+    base = test["severe_base_pct"]
+    lines = [f"On average, **{base:.0f}%** of the items with a communicated impact had a **Production or Market** impact."]
+    worse = shown[(shown["Lift"] > 1) & (shown["p-value"] < SIGNIFICANT)]
+    better = shown[(shown["Lift"] < 1) & (shown["p-value"] < SIGNIFICANT)]
+    for _, r in worse.head(3).iterrows():
+        lines.append(f"**{r['Root cause']}** leads to a severe impact more often: **{r['% severe']:.0f}%** of its "
+                     f"{r['Impact communicated']} items ({r['Lift']:.1f}× the average).")
+    for _, r in better.head(2).iterrows():
+        lines.append(f"**{r['Root cause']}** rarely leads to a severe impact: **{r['% severe']:.0f}%** of its "
+                     f"{r['Impact communicated']} items.")
+    if worse.empty and better.empty:
+        lines.append("No root cause differs clearly from the average in this selection (the differences may be chance).")
+    insights_box(lines)
+
+    # --- chart 1: impact per root cause
     order = shown["Root cause"].tolist()
-    if order:
-        assessed = table.loc[order].drop(columns=ins.NOT_COMMUNICATED)
-        share = assessed.div(assessed.sum(axis=1), axis=0) * 100
-        fig, ax = plt.subplots(figsize=(10, 0.42 * len(order) + 1.4))
-        im = ax.imshow(share.to_numpy(), cmap="Reds", aspect="auto", vmin=0, vmax=100)
-        ax.set_xticks(range(share.shape[1]), share.columns)
-        ax.set_yticks(range(len(order)), [o if len(o) <= 40 else o[:39] + "…" for o in order], fontsize=8)
-        for i in range(share.shape[0]):
-            for j in range(share.shape[1]):
-                n = int(assessed.iat[i, j])
-                if n:
-                    ax.text(j, i, f"{share.iat[i, j]:.0f}%\n({n})", ha="center", va="center", fontsize=7,
-                            color="white" if share.iat[i, j] > 60 else "black")
-        ax.set_title("Impact communicated per root cause (% of the items with an impact entered, count in brackets)")
-        ax.spines[:].set_visible(False)
-        fig.colorbar(im, ax=ax, fraction=0.025, label="% of the items with an impact entered")
-        plt.tight_layout()
-        st.pyplot(fig)
-    st.dataframe(shown, use_container_width=True, hide_index=True,
-                 column_config={"p-value": st.column_config.NumberColumn(format="%.4f")})
-    st.caption("Lift = % severe of this root cause ÷ % severe of all root causes (above 1 = more severe than average). "
-               "p-value = Fisher's exact test, this root cause vs all others; below 0.05 the difference is unlikely "
-               "to be chance. An item with two root causes counts for both. Small counts: read with care.")
+    counts = table.loc[order, list(IMPACT_COLORS)]
+    shares = counts.div(counts.sum(axis=1), axis=0) * 100
+    notes = [f"{n} items{' ★' if p < SIGNIFICANT else ''}" for n, p in zip(counts.sum(axis=1), shown["p-value"])]
+    st.pyplot(_stacked_bars(shares, counts, IMPACT_COLORS, f"Impact communicated per {by.lower()} (sorted by share of "
+                            "Production + Market)", "% of the items with a communicated impact", notes))
+    explain("Each bar = 100% of the items of a root cause whose impact was communicated. **Dark red and red** = "
+            "severe impacts (Market, Production); **green** = no impact.\n\n"
+            "The root causes at the **top** most often lead to a severe impact. **★** = the difference with the "
+            "average is unlikely to be chance.")
+
+    # --- chart 2: material status per root cause
+    status = ins.root_cause_status(data).reindex(order).fillna(0)
+    status_shares = status.div(status.sum(axis=1).replace(0, np.nan), axis=0).fillna(0) * 100
+    st.pyplot(_stacked_bars(status_shares, status, ui.STATUS_COLORS, f"Worst material status per {by.lower()}",
+                            "% of the items with this root cause",
+                            [f"{int(n)} items" for n in status.sum(axis=1)]))
+    explain("For the same root causes: the **worst material status** each item reached while the root cause was "
+            "entered (ION colours: red = Actual Stock Out, orange = Potential, yellow = Below Safety, green = Good).")
+
+    # --- table
+    st.dataframe(shown.assign(Significant=np.where(shown["p-value"] < SIGNIFICANT, "Yes", "No"))
+                 .rename(columns={"Root cause": by, "Lift": "× average"})
+                 [[by, "Stakeholder", "Items", "Impact communicated", "Severe (Prod.+Market)", "% severe", "× average",
+                   "Significant", "p-value"]].drop(columns=["Stakeholder"] if by == "Stakeholder" else []),
+                 use_container_width=True, hide_index=True, column_config={
+                     "Items": st.column_config.NumberColumn(help="Items with this root cause in the timeframe."),
+                     "Impact communicated": st.column_config.NumberColumn(help=HELP["communicated"]),
+                     "% severe": st.column_config.NumberColumn(help=HELP["severe"]),
+                     "× average": st.column_config.NumberColumn(help=HELP["lift"]),
+                     "Significant": st.column_config.TextColumn(help=HELP["significant"]),
+                     "p-value": st.column_config.NumberColumn(format="%.4f", help=HELP["p"])})
+
+    with details():
+        significant = test["p"] < SIGNIFICANT
+        strength = "weak" if test["cramers_v"] < 0.2 else "moderate" if test["cramers_v"] < 0.4 else "strong"
+        st.markdown(
+            f"**Are root cause and impact linked, or is it chance?** A chi-square test of independence compares the "
+            f"impacts observed per root cause with what we would see if the root cause made no difference. On the "
+            f"{test['n_items']} items with a communicated impact of the {test['n_causes']} root causes with at least "
+            f"5 of them: χ² = {test['chi2']}, {test['dof']} degrees of freedom, p = {test['p']:.2g}.\n\n"
+            + ("→ **The link is real** (p below 0.05): the root cause tells something about the impact to expect.\n\n"
+               if significant else "→ **No clear link** (p above 0.05): the differences may be chance.\n\n")
+            + f"**How strong is the link?** Cramér's V = {test['cramers_v']} ({strength}). It goes from 0 (no link) "
+            f"to 1 (the root cause fully decides the impact); 0.1 is weak, 0.3 moderate, 0.5 strong.\n\n"
+            f"**× average (lift)** = share of severe impacts of the root cause ÷ the average share ({base}%).\n\n"
+            f"**p-value per root cause** (Fisher's exact test): this root cause compared with all the others. Below "
+            f"0.05, the difference is unlikely to be chance (★ in the chart).\n\n"
+            "**Limits**: an item with two root causes counts for both; the impact is the most severe one entered for "
+            "the item over the timeframe; items without impact entered are left out (unknown, not 'no impact').")
 
 
 # ------------------------------------------------------------------ page 4
 @st.cache_data(show_spinner="Looking for weak signals...")
 def _weak_signals(tracking, comments_en):
     items = ins.weak_signal_items(tracking, comments_en)
-    terms = ins.signal_terms(items)
-    scores, risk, weights = ins.signal_model(items)
-    items["Risk"] = risk
-    return items, terms, scores, weights
+    phrases = ins.signal_phrases(items)
+    context = {c: ins.signal_context(items, c) for c in ins.CONTEXT}
+    model = ins.signal_model(items)
+    if model:
+        items["Risk"], items["Why"] = model["risk"], model["reasons"]
+    return items, phrases, context, model
+
+
+def _bar_vs_average(frame, label_column, value_column, average, title, highlight):
+    """Horizontal bars of a share, with the average as a dashed line; significant rows in red."""
+    frame = frame.iloc[::-1]
+    fig, ax = plt.subplots(figsize=(10, 0.38 * len(frame) + 1.3))
+    labels = [str(v) if len(str(v)) <= 45 else str(v)[:44] + "…" for v in frame[label_column]]
+    colors = ["#E0443A" if h else "#F28C28" for h in highlight[::-1]]
+    ax.barh(labels, frame[value_column], color=colors)
+    for i, (v, n) in enumerate(zip(frame[value_column], frame["Items"])):
+        ax.text(v + 1, i, f"{v:.0f}%  ({n} items)", va="center", fontsize=7.5)
+    ax.axvline(average, color="#374151", linestyle="--", linewidth=1)
+    ax.text(average, len(frame) - 0.3, f" average {average:.0f}%", fontsize=7.5, color="#374151", va="bottom")
+    ax.set_xlim(0, 105)
+    ax.set_xlabel("% of the items followed by a Production / Market impact")
+    ax.set_title(title)
+    ax.tick_params(axis="y", labelsize=8)
+    ax.spines[["top", "right"]].set_visible(False)
+    plt.tight_layout()
+    return fig
 
 
 def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name):
     ui.section("weak-signals", "Weak Signals — " + selection_name)
     if tracking is None:
         return _missing_tracking()
-    st.caption("Do the first comments on an item announce a Production or Market impact communicated LATER? Unit = item "
-               "(material, vendor) with a comment; items already severe when first commented are left out. The "
-               "analysis uses all items (it needs volume); the sidebar filters apply to the watch list at the bottom.")
-    items, terms, scores, weights = _weak_signals(tracking, comments_en)
+    explanations_toggle()
+    explain("**Can we see an impact coming?** For every item (a material from a vendor), we look at its **first "
+            "comment** and its context at that moment (vendor, root cause, material status), and check whether a "
+            "**Production or Market impact** was communicated **later**.\n\n"
+            "A weak signal = a phrase or a context after which such an impact comes more often than usual. The "
+            "analysis uses the whole history (it needs volume); the sidebar filters apply to the watch list.")
+    items, phrases, context, model = _weak_signals(tracking, comments_en)
     severe = items[items["Severe_later"]]
+    base = len(severe) / len(items) * 100
     m1, m2, m3 = st.columns(3)
-    m1.metric("Items with a comment", f"{len(items):,}")
-    m2.metric("Severe impact communicated later", f"{len(severe):,}", delta=f"{len(severe) / len(items) * 100:.1f}%",
-              delta_color="off")
+    m1.metric("Items with a comment", f"{len(items):,}",
+              help="Items whose first comment came before any severe impact (items already in Production / Market "
+                   "impact when first commented are left out: nothing to anticipate).")
+    m2.metric("Impact communicated later", f"{len(severe):,}", delta=f"{base:.1f}% of them", delta_color="off",
+              help="Items that received a Production or Market impact after their first comment. The others had no "
+                   "such impact communicated (which does not prove there was none).")
     m3.metric("Median warning time", f"{severe['Days_before_impact'].median():.0f} days",
-              help="Days between the first comment and the first Production / Market impact.")
+              help="Half of the impacts came less than this many days after the first comment, half came later: the "
+                   "time there was to react.")
 
-    ui.panel_header("Words of the first comment followed by a severe impact")
-    st.dataframe(terms.head(25), use_container_width=True, hide_index=True,
-                 column_config={"p-value": st.column_config.NumberColumn(format="%.4f")})
-    st.caption(f"Words or word pairs of at least 5 first comments. Lift = % severe later with this word ÷ "
-               f"{len(severe) / len(items) * 100:.1f}% for all items. p-value = one-sided Fisher's exact test. "
-               "The other items had no Production / Market impact communicated, which does not prove that there was none.")
+    # --- main findings
+    lines = []
+    if not phrases.empty:
+        top = phrases.head(3)
+        lines.append("Phrases most often followed by an impact: " + "; ".join(
+            f"**\"{r['Phrase']}\"** ({r['% impact later']:.0f}% of {r['Items']} items, {r['× average']:.1f}× average)"
+            for _, r in top.iterrows()) + ".")
+    vendors = context["VENDOR_NAME"]
+    if not vendors.empty:
+        top_v = vendors[vendors["p-value"] < SIGNIFICANT].head(3)
+        if len(top_v):
+            lines.append("Vendors whose items most often end with an impact: " + "; ".join(
+                f"**{r['VENDOR_NAME']}** ({r['% impact later']:.0f}% of {r['Items']} items)" for _, r in top_v.iterrows()) + ".")
+    status = context["MATERIAL_STATUS"]
+    if not status.empty:
+        aso = status[status["MATERIAL_STATUS"] == "Actual Stock Out"]
+        if len(aso):
+            lines.append(f"Items already in **Actual Stock Out** when first commented: **{aso['% impact later'].iloc[0]:.0f}%** "
+                         f"later had an impact, vs **{base:.0f}%** on average.")
+    insights_box(lines)
 
-    ui.panel_header("Can the first comment predict the impact?")
-    if scores.empty:
+    # --- phrases
+    ui.panel_header("Phrases in the first comment that announce an impact")
+    explain("Phrases of 2 to 3 words (common words like 'the', 'for' are skipped, so `request pull-in` stands for "
+            "\"Request for pull-in\"). **Red** bars = unlikely to be chance; orange = a tendency to confirm. The "
+            "dashed line is the average of all items.\n\n"
+            "The table gives the context: the usual root cause and vendors of these comments, and an example.")
+    if phrases.empty:
+        st.info("No phrase is followed by an impact clearly more often than average.")
+    else:
+        top = phrases.head(12)
+        st.pyplot(_bar_vs_average(top, "Phrase", "% impact later", base, "Phrases of the first comment",
+                                  (top["p-value"] < SIGNIFICANT).tolist()))
+        st.dataframe(phrases.assign(Significant=np.where(phrases["p-value"] < SIGNIFICANT, "Yes", "No"))
+                     [["Phrase", "Items", "Impact later", "% impact later", "× average", "Significant", "Main root cause",
+                       "Main vendors", "Example", "p-value"]],
+                     use_container_width=True, hide_index=True, column_config={
+                         "Items": st.column_config.NumberColumn(help="Items whose first comment contains the phrase."),
+                         "Impact later": st.column_config.NumberColumn(help="Of these, items with a Production / Market "
+                                                                            "impact communicated later."),
+                         "% impact later": st.column_config.NumberColumn(help=HELP["impact_later"]),
+                         "× average": st.column_config.NumberColumn(help=HELP["lift"]),
+                         "Significant": st.column_config.TextColumn(help=HELP["significant"]),
+                         "Example": st.column_config.TextColumn(width="large", help="A first comment with this phrase."),
+                         "p-value": st.column_config.NumberColumn(format="%.4f", help=HELP["p"])})
+
+    # --- context
+    ui.panel_header("Context of the first comment: vendor, root cause, material status")
+    explain("The same question for the context of the first comment: after which vendors, root causes and material "
+            "statuses does an impact come more often? Only values with at least 3 items are shown.")
+    names = {"VENDOR_NAME": "Vendor", "Root_Cause": "Root cause", "MATERIAL_STATUS": "Material status"}
+    for tab, column in zip(st.tabs([names[c] for c in ["VENDOR_NAME", "Root_Cause", "MATERIAL_STATUS"]]),
+                           ["VENDOR_NAME", "Root_Cause", "MATERIAL_STATUS"]):
+        with tab:
+            frame = context[column]
+            if frame.empty:
+                st.info("Not enough items.")
+                continue
+            top = frame.head(12)
+            st.pyplot(_bar_vs_average(top, column, "% impact later", base, f"{names[column]} at the first comment",
+                                      (top["p-value"] < SIGNIFICANT).tolist()))
+            st.dataframe(frame.rename(columns={column: names[column]}).assign(
+                Significant=lambda d: np.where(d["p-value"] < SIGNIFICANT, "Yes", "No")),
+                use_container_width=True, hide_index=True, column_config={
+                    "% impact later": st.column_config.NumberColumn(help=HELP["impact_later"]),
+                    "× average": st.column_config.NumberColumn(help=HELP["lift"]),
+                    "Significant": st.column_config.TextColumn(help=HELP["significant"]),
+                    "p-value": st.column_config.NumberColumn(format="%.4f", help=HELP["p"])})
+
+    # --- prediction
+    ui.panel_header("How well can the tool anticipate an impact?")
+    if not model:
         st.info("Not enough items to train a model.")
     else:
-        st.dataframe(scores, use_container_width=True, hide_index=True)
-        best = scores.iloc[scores["MCC"].idxmax()]
-        st.caption(f"Logistic regression with balanced classes, 5-fold cross-validation on {scores.attrs['n_items']} "
-                   f"items ({scores.attrs['n_severe']} severe later). MCC (Matthews correlation coefficient): 0 = no "
-                   f"better than chance, 1 = perfect; it stays honest when severe items are rare. ROC AUC: 0.5 = chance. "
-                   f"Best: {best['Model']} (MCC {best['MCC']}, AUC {best['ROC AUC']}). Method after Usuga-Cadavid et "
-                   "al. (classic text model, MCC, word contributions).")
-        with st.expander("Words and root causes that weigh most in the model"):
-            st.dataframe(pd.concat([weights.head(15).assign(Direction="raises the risk"),
-                                    weights.tail(10).iloc[::-1].assign(Direction="lowers the risk")]),
+        scores = model["scores"]
+        best = scores.iloc[-1]
+        n_top = scores.attrs["top_n"]
+        insights_box([
+            f"If you check first the **{n_top} items** (10%) the tool ranks most at risk, **{best['Impact rate in the top 10%']:.0f}%** "
+            f"of them later had a Production / Market impact, against **{base:.0f}%** on average: "
+            f"**{best['× average']:.1f}× better than checking at random**.",
+            f"These {n_top} items contain **{best['Share of all impacts found']:.0f}%** of all the impacts that came later.",
+            f"Using the comment and its context (vendor, root cause, status) works better than the root cause alone "
+            f"({scores.iloc[0]['Impact rate in the top 10%']:.0f}% in the top 10%)."])
+        fig, ax = plt.subplots(figsize=(10, 2.4))
+        ax.barh(scores["Model"][::-1], scores["Impact rate in the top 10%"][::-1], color=["#1A73E8", "#7B61FF", "#0B41CD"])
+        for i, v in enumerate(scores["Impact rate in the top 10%"][::-1]):
+            ax.text(v + 0.5, i, f"{v:.0f}%", va="center", fontsize=8)
+        ax.axvline(base, color="#374151", linestyle="--", linewidth=1)
+        ax.text(base, 2.45, f" average {base:.0f}%", fontsize=7.5, color="#374151")
+        ax.set_xlabel("% of the 10% highest-ranked items that later had a Production / Market impact")
+        ax.tick_params(axis="y", labelsize=8)
+        ax.spines[["top", "right"]].set_visible(False)
+        plt.tight_layout()
+        st.pyplot(fig)
+        explain("Each bar is a version of the tool, using different information. The further a bar goes beyond the "
+                "dashed line (the average), the better that version spots the items that will get an impact.")
+        with details():
+            st.markdown(
+                f"**Model**: logistic regression, classes balanced, on {scores.attrs['n_items']} items "
+                f"({scores.attrs['n_severe']} with an impact later). Inputs: phrases of 2-3 words of the first comment "
+                "(TF-IDF), root cause, vendor and material status at the first comment.\n\n"
+                "**Honest evaluation**: 5-fold cross-validation. The items are split in 5 parts; each part is scored "
+                "by a model trained on the 4 others, so every item is scored by a model that never saw it.\n\n"
+                "**Top 10%**: the items are ranked by their risk; we look at the 10% at the top, as a planner would "
+                "check them first.\n\n"
+                "**MCC** (Matthews correlation coefficient): overall quality of the yes/no prediction, from -1 to 1; "
+                "0 = no better than chance; 0.2-0.3 = modest but real; it stays fair when impacts are rare. "
+                "**ROC AUC**: the chance that an item with an impact is ranked above one without; 0.5 = chance, 1 = perfect.\n\n"
+                "Method after Usuga-Cadavid et al. (classic text model, MCC for imbalanced classes, contributions of "
+                "the words to explain the predictions).")
+            st.dataframe(scores, use_container_width=True, hide_index=True, column_config={
+                "MCC": st.column_config.NumberColumn(help="0 = chance, 1 = perfect."),
+                "ROC AUC": st.column_config.NumberColumn(help="0.5 = chance, 1 = perfect.")})
+            weights = model["weights"]
+            st.markdown("**Elements that weigh most** (positive = raises the risk, negative = lowers it)")
+            st.dataframe(pd.concat([weights.head(15).assign(Effect="raises the risk"),
+                                    weights.tail(10).iloc[::-1].assign(Effect="lowers the risk")]),
                          use_container_width=True, hide_index=True)
 
-    ui.panel_header("Watch list: open items whose comments look like those that led to an impact")
-    last_day = pd.to_datetime(tracking["Snapshot_Date"]).max()
+    # --- watch list
+    ui.panel_header("Watch list: open items that look like those that led to an impact")
+    explain("Items **still visible on the last snapshot**, with no Production / Market impact communicated yet, ranked "
+            "by their risk. The risk comes from the tool above: it compares the item's first comment and context with "
+            "all the items of the past.\n\n"
+            "**Why** gives the 3 elements that raise the risk of this item most. A list of items to look at first, "
+            "not a certainty.")
+    if not model:
+        return
+    last_day = tracking["Snapshot_Date"].max()
     in_scope = set(map(tuple, tracking_filtered[ins.ITEM].drop_duplicates().to_numpy()))
     watch = items[(items["Last_seen"] == last_day) & ~items["Severe_later"]].copy()
     watch = watch[[(m, v) in in_scope for m, v in zip(watch["MATERIAL_NUMBER"], watch["VENDOR_ACCOUNT_NUMBER"])]]
     watch["Days since first comment"] = (last_day - watch["First_comment"]).dt.days
-    watch = watch.sort_values("Risk", ascending=False).head(20)
-    watch["Risk"] = (watch["Risk"] * 100).round(0).astype("Int64").astype(str) + "%"
-    st.dataframe(watch[["Risk", "Text", "Root_Cause", "Days since first comment", "VENDOR_NAME", "MRP_CONTROLLER",
-                        "MATERIAL_DESC"]]
+    watch = watch.sort_values("Risk", ascending=False).head(25)
+    watch["Risk"] = (watch["Risk"] * 100).round(0)
+    st.dataframe(watch[["Risk", "Why", "Text", "VENDOR_NAME", "Root_Cause", "Status_now", "Days since first comment",
+                        "MRP_CONTROLLER", "MATERIAL_DESC"]]
                  .rename(columns={"Text": "First comment (EN)", "Root_Cause": "Root cause", "VENDOR_NAME": "Vendor",
-                                  "MRP_CONTROLLER": "MRP Controller", "MATERIAL_DESC": "Material"}),
-                 use_container_width=True, hide_index=True,
-                 column_config={"First comment (EN)": st.column_config.TextColumn(width="large")})
-    st.caption(f"Items still visible on {last_day:%d.%m.%Y} with no Production / Market impact communicated, ranked by the "
-               "risk the model gives them (out-of-fold estimate). A ranking to look at first, not a forecast.")
+                                  "Status_now": "Status now", "MRP_CONTROLLER": "MRP Controller", "MATERIAL_DESC": "Material"}),
+                 use_container_width=True, hide_index=True, column_config={
+                     "Risk": st.column_config.ProgressColumn(
+                         "Risk", format="%d%%", min_value=0, max_value=100,
+                         help="Risk score of the tool (0-100). It ranks the items; it is not a probability to read literally."),
+                     "Why": st.column_config.TextColumn(width="large", help="The 3 elements of the first comment and its "
+                                                                            "context that raise the risk most."),
+                     "First comment (EN)": st.column_config.TextColumn(width="large")})
+    st.caption(f"Items still visible on {last_day:%d.%m.%Y} with no Production / Market impact communicated. "
+               "The sidebar filters apply to this list.")
 
 
-def render(page, df, filtered_df, selections, selection_name):
-    """Draw the Insights Lab page `page` (an id of PAGES)."""
+def render(page, df, filtered_df, selections, selection_name, period=None):
+    """Draw the Insights Lab page `page` (an id of PAGES). period = (start, end) of the sidebar timeframe or None."""
     tracking = load_tracking()
     st.session_state["_comments_en"] = dict(zip(df["Comment"], df["Comment_EN"]))
-    tracking_filtered = filter_tracking(tracking, selections) if tracking is not None else None
+    tracking_filtered = filter_tracking(tracking, selections, period) if tracking is not None else None
     if page == "grouped-comments":
         page_grouped_comments(filtered_df, selection_name)
     elif page == "trends-all":
@@ -339,4 +613,5 @@ def render(page, df, filtered_df, selections, selection_name):
     elif page == "cause-impact":
         page_cause_impact(tracking_filtered, selection_name)
     elif page == "weak-signals":
-        page_weak_signals(tracking, tracking_filtered, st.session_state["_comments_en"], selection_name)
+        page_weak_signals(tracking, filter_tracking(tracking, selections) if tracking is not None else None,
+                          st.session_state["_comments_en"], selection_name)

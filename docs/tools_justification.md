@@ -151,6 +151,8 @@ Used in the explorations of `data_cleaning.ipynb` (A: tokens, B: keywords by roo
  | Local LLM (LM Studio) | Possible, but **slower** and less consistent than a dedicated translation engine. |
 
 ### **Data Governance**
+**Classification** (Marco, project sponsor, 26.10): prices and quantities are sensitive; the other data is not confidential, so the pseudonymisation below is an additional safeguard. Open point: quantities written inside the comments are still sent; masking them would align the pipeline fully.
+
 DeepL is a **cloud service**: only the comment text is sent (no vendor, material or quantity column). Before sending, the text is **pseudonymised** (`scripts/pseudonymise.py`): e-mail addresses, @-mentions, supplier names, material numbers, long numbers (PO, batch) and the company name are replaced by placeholders, which DeepL copies unchanged; the original values are restored locally after translation. The same module protects the prompt of the Smart Analysis (section 6). The comment cell is first cut into its **journal entries** and the signatures (staff logins, dates) are removed (`data_cleaning.py`), so that no login reaches the translation; abbreviations are written out before pseudonymisation (`scripts/abbreviations.py`, `lexicon/abbreviations.csv`), so that DeepL receives full words. Names of the sourcing managers (column `SOURCING_MANAGER`) are pseudonymised too.
 
 **Residual limits** (thesis, 3.8):

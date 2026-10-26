@@ -105,3 +105,40 @@ def test_grouping_by_meaning_uses_the_given_embeddings():
     group_of = dict(zip(variants["Wording"].str.lower(), variants["Group"]))
     assert group_of["no stockout detected"] == group_of["no stockout apparent"] != group_of["request for pull-in"]
     assert "similar meaning" in variants.set_index("Wording").loc["No stockout apparent", "Reason"]
+
+
+def weak_items(n=60):
+    """Synthetic first comments: 'escalated to procurement' at vendor A is followed by an impact."""
+    rows = []
+    for i in range(n):
+        signal = i % 3 == 0
+        rows.append({"Text": ("Supplier escalated to procurement, partial deliveries" if signal else "Delivery on time, no issue"),
+                     "Root_Cause": "S_Lack of Raw Material" if signal else "PL_Shortterm demand",
+                     "VENDOR_NAME": "A" if signal else "B", "MATERIAL_STATUS": "Actual Stock Out",
+                     "Severe_later": signal and i % 2 == 0})
+    return pd.DataFrame(rows)
+
+
+def test_signal_phrases_have_two_words_or_more_and_context():
+    phrases = ins.signal_phrases(weak_items())
+    assert len(phrases) and all(len(p.split()) >= 2 for p in phrases["Phrase"])
+    top = phrases.iloc[0]
+    assert top["Main root cause"].startswith("S_Lack of Raw Material") and top["Main vendors"].startswith("A")
+    assert top["× average"] > 1
+
+
+def test_signal_context_and_model():
+    items = weak_items(90)
+    vendors = ins.signal_context(items, "VENDOR_NAME")
+    assert vendors.iloc[0]["VENDOR_NAME"] == "A" and vendors.iloc[0]["× average"] > 1
+    result = ins.signal_model(items)
+    assert list(result["scores"]["Model"].str.split().str[0]) == ["Root", "Comment", "Comment"]
+    assert result["risk"].notna().all() and len(result["reasons"]) == len(items)
+    assert not result["weights"]["Element"].str.contains("VENDOR_NAME_").any()      # readable names
+
+
+def test_root_cause_status_takes_the_worst_status():
+    t = pd.DataFrame({"MATERIAL_NUMBER": [1, 1, 2], "VENDOR_ACCOUNT_NUMBER": [1, 1, 1], "Root_Cause": ["X", "X", "X"],
+                      "MATERIAL_STATUS": ["Below Safety", "Actual Stock Out", "Unknown Status (Good Part)"]})
+    table = ins.root_cause_status(t)
+    assert table.loc["X", "Actual Stock Out"] == 1 and table.loc["X", "Good Part"] == 1

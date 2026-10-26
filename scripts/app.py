@@ -302,8 +302,13 @@ for column, selected in [("MRP_CONTROLLER", selected_mrp), ("PURCHASING_GROUP", 
         filtered_df = filtered_df[filtered_df[column].isin(selected)]
 
 # --- Timeframe filter (Part B: apply the choice to filtered_df) ---
-# A comment stays visible for many days: keep it if [First_Seen, Last_Seen] overlaps the period
+# A comment stays visible for many days: keep it if [First_Seen, Last_Seen] overlaps the period.
+# PERIOD = (start, end) of the timeframe, or None for all snapshots: it also limits the weeks of the trend
+# charts (a comment visible for months would otherwise stretch the chart beyond the period).
+PERIOD = None
 if timeframe_option == "Custom period":
+    if start_ts is not None:
+        PERIOD = (start_ts, end_ts + pd.Timedelta(days=1) - pd.Timedelta(seconds=1))
     if start_ts is not None:
         filtered_df = filtered_df[
             (filtered_df["Last_Seen"] >= start_ts)
@@ -314,6 +319,7 @@ elif timeframe_option.startswith("Last"):
     latest_snapshot = df["Last_Seen"].max()
     cutoff = latest_snapshot - pd.Timedelta(weeks=weeks)
     filtered_df = filtered_df[filtered_df["Last_Seen"] >= cutoff]
+    PERIOD = (cutoff, latest_snapshot)
 # "All snapshots" → no filtering needed
 
 
@@ -333,7 +339,7 @@ selection_name = " / ".join(selection_parts) if selection_parts else "All commen
 if PAGE:
     insights_pages.render(PAGE, df, filtered_df, {
         "MRP_CONTROLLER": selected_mrp, "PURCHASING_GROUP": selected_pgroup, "VENDOR_LABEL": selected_vendor_label,
-        "MATERIAL_LABEL": selected_material_label, "Root_Cause": selected_root_cause}, selection_name)
+        "MATERIAL_LABEL": selected_material_label, "Root_Cause": selected_root_cause}, selection_name, PERIOD)
     st.stop()
 
 # Compute all statistics ONCE (used by all sections and the AI Summary)
@@ -625,6 +631,9 @@ with tab5:
     #    (snapshots are daily: a weekly view is readable and a comment open for
     #    5 weeks counts in each of those weeks)
     trend_data = weekly_active(filtered_df.dropna(subset=["Root_Cause"]), by="Root_Cause")
+    if PERIOD and not trend_data.empty:   # only the weeks that overlap the timeframe (index = Sunday of the week)
+        week_end = pd.to_datetime(trend_data.index)
+        trend_data = trend_data[(week_end >= PERIOD[0].normalize()) & (week_end - pd.Timedelta(days=6) <= PERIOD[1])]
 
     if trend_data.empty:
         st.info("No data to display for the current filters.")

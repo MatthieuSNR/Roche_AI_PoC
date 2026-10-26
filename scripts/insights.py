@@ -259,101 +259,190 @@ def root_cause_impact(tracking, min_items=5):
     return table, per_cause, test
 
 
+STATUS_ORDER = ["Actual Stock Out", "Potential Stock Out", "Below Safety", "Good Part"]
+
+
+def root_cause_status(tracking):
+    """Items per root cause and material status: the worst status the item had while the root cause was entered
+    ('Unknown Status (Good Part)' counts as Good Part)."""
+    rank = {status: i for i, status in enumerate(STATUS_ORDER)}
+    rows = tracking.dropna(subset=["Root_Cause"]).assign(
+        _status=lambda d: d["MATERIAL_STATUS"].replace({"Unknown Status (Good Part)": "Good Part"}))
+    rows = rows[rows["_status"].isin(STATUS_ORDER)].assign(_r=lambda d: d["_status"].map(rank))
+    worst = rows.sort_values("_r").drop_duplicates(ITEM + ["Root_Cause"])
+    return pd.crosstab(worst["Root_Cause"], worst["_status"]).reindex(columns=STATUS_ORDER, fill_value=0)
+
+
 # ------------------------------------------------------------------ 4. weak signals
+# A weak signal = something in the FIRST comment on an item (its wording, the root cause, the vendor, the
+# material status at that time) that is followed by a Production / Market impact communicated LATER.
+# Single words say little ("pull"): phrases of 2 to 3 words are used, with their context.
+TOKEN = r"(?u)\b[a-zA-Z][a-zA-Z0-9]*(?:-[a-zA-Z0-9]+)*\b"   # "pull-in" stays one word
+
+
 def weak_signal_items(tracking, comments_en):
-    """One row per item with a comment: its first comment (in English), the root cause at that time, and
-    whether a severe impact (Production / Market) was communicated LATER (False = none communicated, which may
-    also mean that the impact was never entered). Items already severe on the day of
-    their first comment are left out: there is nothing to anticipate."""
+    """One row per item with a comment: its first comment (in English) and the context at that time (root cause,
+    vendor, material status), and whether a severe impact (Production / Market) was communicated LATER
+    (False = none communicated, which may also mean that the impact was never entered). Items already severe
+    on the day of their first comment are left out: there is nothing to anticipate."""
     t = tracking.assign(Snapshot_Date=pd.to_datetime(tracking["Snapshot_Date"]))
     commented = t.dropna(subset=["Comment"]).sort_values("Snapshot_Date")
-    first = commented.groupby(ITEM).first()[["Snapshot_Date", "Comment", "Root_Cause", "VENDOR_NAME",
+    first = commented.groupby(ITEM).first()[["Snapshot_Date", "Comment", "Root_Cause", "VENDOR_NAME", "MATERIAL_STATUS",
                                               "MRP_CONTROLLER", "MATERIAL_DESC"]]
     first = first.rename(columns={"Snapshot_Date": "First_comment"})
     severe_day = t[t["Impact_Level"].isin(SEVERE_IMPACTS)].groupby(ITEM)["Snapshot_Date"].min().rename("First_severe")
-    last_seen = t.groupby(ITEM)["Snapshot_Date"].max().rename("Last_seen")
-    items = first.join(severe_day).join(last_seen).reset_index()
+    last = t.sort_values("Snapshot_Date").groupby(ITEM).last()
+    items = first.join(severe_day).join(last["Snapshot_Date"].rename("Last_seen"))
+    items = items.join(last["MATERIAL_STATUS"].rename("Status_now")).reset_index()
     items = items[~(items["First_severe"] <= items["First_comment"])]
     items["Severe_later"] = items["First_severe"].notna()
     items["Days_before_impact"] = (items["First_severe"] - items["First_comment"]).dt.days
-    items["Text"] = items["Comment"].map(comments_en).fillna(items["Comment"]).str.replace("¦▸", " ", regex=False)
+    items["Text"] = (items["Comment"].map(comments_en).fillna(items["Comment"]).str.replace("¦▸", " ", regex=False)
+                     .str.replace(r"(?i)\bpull[\s-]?in", "pull-in", regex=True))   # one spelling for the phrases
     items["Root_Cause"] = items["Root_Cause"].fillna(NO_ROOT_CAUSE)
+    items["VENDOR_NAME"] = items["VENDOR_NAME"].fillna("Unknown vendor")
+    items["MATERIAL_STATUS"] = items["MATERIAL_STATUS"].fillna("Unknown")
     return items.reset_index(drop=True)
 
 
-def signal_terms(items, min_items=5, max_p=0.1):
-    """Words and word pairs of the first comments that are followed by a severe impact more often than
-    average: items with the term, how many became severe, lift, one-sided Fisher exact test."""
+def _fisher_greater(k, m, n_pos, n):
     from scipy.stats import fisher_exact
+    return fisher_exact([[k, m - k], [n_pos - k, n - m - (n_pos - k)]], alternative="greater")[1]
+
+
+def _top(values, n=2):
+    counts = pd.Series(values).value_counts()
+    return ", ".join(f"{k} ({v})" for k, v in counts.head(n).items())
+
+
+def signal_phrases(items, min_items=4, max_p=0.1):
+    """Phrases of 2 to 3 words of the first comments followed by a severe impact more often than average, with
+    their context: main root cause, main vendors, an example. A phrase found in exactly the same items as a
+    phrase already listed (e.g. "request pull-in" / "request pull-in lt") is shown once."""
     from sklearn.feature_extraction.text import CountVectorizer
 
-    vec = CountVectorizer(binary=True, ngram_range=(1, 2), min_df=min_items, stop_words="english",
-                          token_pattern=r"(?u)\b[a-zA-Z][a-zA-Z0-9]{2,}\b")
-    x = vec.fit_transform(items["Text"].str.lower())
+    if len(items) < min_items:
+        return pd.DataFrame()
+    vec = CountVectorizer(binary=True, ngram_range=(2, 3), min_df=min_items, stop_words="english", token_pattern=TOKEN)
+    try:
+        x = vec.fit_transform(items["Text"].str.lower()).tocsc()
+    except ValueError:          # no phrase frequent enough
+        return pd.DataFrame()
     y = items["Severe_later"].to_numpy()
     n_pos, n = int(y.sum()), len(y)
-    has = x.toarray().astype(bool)
     rows = []
-    for j, term in enumerate(vec.get_feature_names_out()):
-        with_term = has[:, j]
-        k, m = int((y & with_term).sum()), int(with_term.sum())
-        p = fisher_exact([[k, m - k], [n_pos - k, n - m - (n_pos - k)]], alternative="greater")[1]
-        rows.append({"Term": term, "Items": m, "Severe later": k, "% severe later": round(k / m * 100, 1),
-                     "Lift": round(k / m / (n_pos / n), 2), "p-value": round(p, 4)})
-    terms = pd.DataFrame(rows)
-    return terms[(terms["p-value"] <= max_p) & (terms["Lift"] > 1)].sort_values(["p-value", "Lift"], ascending=[True, False])
+    for j, phrase in enumerate(vec.get_feature_names_out()):
+        idx = x[:, j].nonzero()[0]
+        k, m = int(y[idx].sum()), len(idx)
+        if not n_pos or k / m <= n_pos / n:
+            continue
+        p = _fisher_greater(k, m, n_pos, n)
+        if p > max_p:
+            continue
+        sub = items.iloc[idx]
+        example = sub.loc[sub["Severe_later"], "Text"] if k else sub["Text"]
+        rows.append({"Phrase": phrase, "Items": m, "Impact later": k, "% impact later": round(k / m * 100, 1),
+                     "× average": round(k / m / (n_pos / n), 1), "p-value": round(p, 4),
+                     "Main root cause": _top(sub["Root_Cause"], 1), "Main vendors": _top(sub["VENDOR_NAME"]),
+                     "Example": example.loc[example.str.len().idxmin()][:160], "_items": frozenset(idx)})
+    if not rows:
+        return pd.DataFrame()
+    phrases = pd.DataFrame(rows).sort_values(["p-value", "Phrase"], key=lambda c: c if c.name == "p-value" else -c.str.len())
+    phrases = phrases.drop_duplicates("_items").drop(columns="_items")
+    return phrases.sort_values(["p-value", "× average"], ascending=[True, False]).reset_index(drop=True)
+
+
+def signal_context(items, column, min_items=3):
+    """Same question for a context column (vendor, root cause, material status at the first comment):
+    share of the items followed by a severe impact, compared with the average."""
+    y = items["Severe_later"]
+    n_pos, n = int(y.sum()), len(y)
+    rows = []
+    for value, group in items.groupby(column):
+        k, m = int(group["Severe_later"].sum()), len(group)
+        if m < min_items:
+            continue
+        rows.append({column: value, "Items": m, "Impact later": k, "% impact later": round(k / m * 100, 1),
+                     "× average": round(k / m / (n_pos / n), 1) if n_pos else np.nan,
+                     "p-value": round(_fisher_greater(k, m, n_pos, n), 4) if n_pos else np.nan})
+    return pd.DataFrame(rows).sort_values(["% impact later", "Items"], ascending=False).reset_index(drop=True) \
+        if rows else pd.DataFrame()
+
+
+CONTEXT = {"Root_Cause": "root cause", "VENDOR_NAME": "vendor", "MATERIAL_STATUS": "status"}
 
 
 def signal_model(items, folds=5, seed=0):
-    """Can the first comment predict a severe impact to come? Logistic regression (balanced classes) on
-    TF-IDF words, on the root cause alone, and on both; 5-fold stratified cross-validation, scored with the
-    Matthews correlation coefficient (robust to imbalanced classes, as in Usuga-Cadavid et al.).
-    Returns (scores per model, out-of-fold risk per item for the text + root cause model, top words)."""
+    """Can the first comment and its context anticipate a severe impact? Logistic regression (balanced classes)
+    on the phrases of the comment (2-3 words, TF-IDF) and the context (root cause, vendor, material status),
+    5-fold stratified cross-validation (every item is scored by a model that never saw it).
+    Returns a dict:
+      scores   per model: share of the items followed by an impact among the 10% the model ranks highest
+               (vs the average), share of all impacts found there, MCC and ROC AUC (statistical details)
+      risk     out-of-fold risk of each item (comment + context model)
+      reasons  per item, the 3 elements that raise its risk most (phrases, root cause, vendor, status)
+      weights  weight of every element in the final model."""
     from scipy.sparse import hstack
     from sklearn.feature_extraction.text import TfidfVectorizer
     from sklearn.linear_model import LogisticRegression
-    from sklearn.metrics import matthews_corrcoef, precision_score, recall_score, roc_auc_score
+    from sklearn.metrics import matthews_corrcoef, roc_auc_score
     from sklearn.model_selection import StratifiedKFold
     from sklearn.preprocessing import OneHotEncoder
 
     y = items["Severe_later"].to_numpy().astype(int)
     if y.sum() < folds or (len(y) - y.sum()) < folds:
-        return pd.DataFrame(), pd.Series(dtype=float), pd.DataFrame()
+        return {}
     cv = StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
+    models = {"cause": ("Root cause only", ["Root_Cause"], False),
+              "text": ("Comment phrases only", [], True),
+              "all": ("Comment phrases + context (root cause, vendor, status)", list(CONTEXT), True)}
 
-    def features(train, test, kind):
+    def features(train, test, columns, text):
         parts_train, parts_test, names = [], [], []
-        if kind in ("text", "both"):
-            # min_df=5: a word must appear in 5 comments, which also keeps isolated person names out
-            tf = TfidfVectorizer(ngram_range=(1, 2), min_df=5, stop_words="english", sublinear_tf=True)
+        if text:
+            # min_df=3: a phrase must appear in 3 first comments (keeps isolated names out)
+            tf = TfidfVectorizer(ngram_range=(2, 3), min_df=3, stop_words="english", token_pattern=TOKEN, sublinear_tf=True)
             parts_train.append(tf.fit_transform(items["Text"].iloc[train]))
             parts_test.append(tf.transform(items["Text"].iloc[test]))
-            names += list(tf.get_feature_names_out())
-        if kind in ("cause", "both"):
-            oh = OneHotEncoder(handle_unknown="ignore")
-            parts_train.append(oh.fit_transform(items[["Root_Cause"]].iloc[train]))
-            parts_test.append(oh.transform(items[["Root_Cause"]].iloc[test]))
-            names += [f"[root cause] {c}" for c in oh.categories_[0]]
+            names += [f'phrase "{t}"' for t in tf.get_feature_names_out()]
+        for column in columns:
+            oh = OneHotEncoder(handle_unknown="ignore", min_frequency=3)
+            parts_train.append(oh.fit_transform(items[[column]].iloc[train]))
+            parts_test.append(oh.transform(items[[column]].iloc[test]))
+            names += [f"{CONTEXT[column]}: " + ("other (rare)" if "infrequent" in c else c[len(column) + 1:])
+                      for c in oh.get_feature_names_out([column])]
         return hstack(parts_train).tocsr(), hstack(parts_test).tocsr(), names
 
+    base = y.mean()
+    top_n = max(1, int(round(len(y) * 0.1)))
     scores, risk = [], pd.Series(np.nan, index=items.index)
-    for kind, label in [("cause", "Root cause only"), ("text", "Comment text only"), ("both", "Comment + root cause")]:
+    for key, (label, columns, text) in models.items():
         prob = np.zeros(len(y))
         for train, test in cv.split(items, y):
-            x_train, x_test, _ = features(train, test, kind)
-            model = LogisticRegression(class_weight="balanced", max_iter=2000, C=1.0).fit(x_train, y[train])
+            x_train, x_test, _ = features(train, test, columns, text)
+            model = LogisticRegression(class_weight="balanced", max_iter=2000).fit(x_train, y[train])
             prob[test] = model.predict_proba(x_test)[:, 1]
-        pred = (prob >= 0.5).astype(int)
-        scores.append({"Model": label, "MCC": round(matthews_corrcoef(y, pred), 3),
-                       "Precision": round(precision_score(y, pred, zero_division=0), 3),
-                       "Recall": round(recall_score(y, pred), 3), "ROC AUC": round(roc_auc_score(y, prob), 3)})
-        if kind == "both":
+        top = np.argsort(-prob)[:top_n]
+        hit = y[top].mean()
+        scores.append({"Model": label, "Impact rate in the top 10%": round(hit * 100, 1),
+                       "× average": round(hit / base, 1), "Share of all impacts found": round(y[top].sum() / y.sum() * 100, 1),
+                       "MCC": round(matthews_corrcoef(y, (prob >= 0.5).astype(int)), 3),
+                       "ROC AUC": round(roc_auc_score(y, prob), 3)})
+        if key == "all":
             risk[:] = prob
-    all_rows = np.arange(len(y))
-    x_all, _, names = features(all_rows, all_rows[:1], "both")
-    model = LogisticRegression(class_weight="balanced", max_iter=2000, C=1.0).fit(x_all, y)
-    weights = pd.DataFrame({"Feature": names, "Weight": model.coef_[0].round(3)})
-    weights = weights.sort_values("Weight", ascending=False).reset_index(drop=True)
+    rows = np.arange(len(y))
+    x_all, _, names = features(rows, rows[:1], list(CONTEXT), True)
+    model = LogisticRegression(class_weight="balanced", max_iter=2000).fit(x_all, y)
+    coef = model.coef_[0]
+    contrib = x_all.multiply(coef).tocsr()      # contribution of each element to each item's risk
+    names = np.array(names)
+    reasons = []
+    for i in range(len(y)):
+        row = contrib.getrow(i)
+        order = np.argsort(-row.data)
+        reasons.append(", ".join(names[row.indices[j]] for j in order[:3] if row.data[j] > 0))
+    weights = pd.DataFrame({"Element": names, "Weight": coef.round(3)}).sort_values("Weight", ascending=False)
     scores = pd.DataFrame(scores)
-    scores.attrs.update(n_items=len(y), n_severe=int(y.sum()))
-    return scores, risk, weights
+    scores.attrs.update(n_items=len(y), n_severe=int(y.sum()), base_pct=round(base * 100, 1), top_n=top_n)
+    return {"scores": scores, "risk": risk, "reasons": pd.Series(reasons, index=items.index),
+            "weights": weights.reset_index(drop=True)}
