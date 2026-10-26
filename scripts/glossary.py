@@ -3,13 +3,17 @@ DeepL glossary for the German supply-chain jargon that DeepL translates inconsis
 (e.g. "Vorzug" -> priority / preference, "Abriss" -> demolition, "Rückbuchung" -> refund).
 
 * Source of truth: lexicon/glossary_de_en.csv (versioned, generic notes only, no real comment excerpts).
-  Only rows with use = yes AND confidence = high are sent to DeepL, the others are proposals that the
+  Only rows with use = yes (or force) AND confidence = high are sent to DeepL, the others are proposals that the
   planners validate (columns status, reviewer, reviewer_comment), same rule as the abbreviation library.
 * DeepL matches glossary terms case-sensitively and, in practice, on the exact written form: inflected
   forms (plural, participle) are therefore listed as separate rows.
 * The glossary is created once on DeepL and reused: its id and a content hash are kept in
   data/interim/deepl_glossary.json. When the CSV changes, the old glossary is deleted and a new one created.
 * The glossary only contains generic vocabulary: nothing confidential is uploaded.
+* use = force: for terms DeepL does not always follow even with the glossary (seen on 26.10: "Vorzug in Planung"
+  -> "Priority in Planning", "Vorzugsanfrage" -> "Pre-registration"). The term is replaced by its English
+  translation inside a <keep> tag before sending, like the pseudonymised names, so DeepL copies it unchanged
+  (translation.py). Forced terms are also part of the DeepL glossary.
 
 Usage:  python scripts/glossary.py --check     (validates the CSV and lists the active terms)
 """
@@ -52,24 +56,38 @@ def validate(df):
                 problems.append(f"line {line}: {column} has spaces around it, a tab or a line break")
         if row["confidence"] not in ("high", "medium", "low"):
             problems.append(f"line {line}: confidence must be high / medium / low")
-        if row["use"] not in ("yes", "no"):
-            problems.append(f"line {line}: use must be yes / no")
-        if row["use"] == "yes" and row["confidence"] != "high":
-            problems.append(f"line {line}: use = yes requires confidence = high")
+        if row["use"] not in ("yes", "no", "force"):
+            problems.append(f"line {line}: use must be yes / no / force")
+        if row["use"] in ("yes", "force") and row["confidence"] != "high":
+            problems.append(f"line {line}: use = {row['use']} requires confidence = high")
     for term in df["term_de"][df["term_de"].duplicated()]:
         problems.append(f"duplicated term: {term}")
     return problems
 
 
 def load_entries(path=GLOSSARY_PATH):
-    """{German term: English term} for the rows sent to DeepL (use = yes and confidence = high)."""
+    """{German term: English term} for the rows sent to DeepL (use = yes or force, and confidence = high)."""
+    return _entries(path, ("yes", "force"))
+
+
+def forced_entries(path=GLOSSARY_PATH):
+    """{German term: English term} of the rows with use = force: written in English before sending to DeepL."""
+    return _entries(path, ("force",))
+
+
+def forced_pattern(entries):
+    """Same whole-word, case-sensitive matching as the DeepL glossary, for the forced terms."""
+    return term_pattern(entries)
+
+
+def _entries(path, uses):
     if not os.path.exists(path):
         return {}
     df = read_glossary(path)
     problems = validate(df)
     if problems:
         raise ValueError("Invalid glossary " + path + ": " + "; ".join(problems))
-    active = df[(df["use"] == "yes") & (df["confidence"] == "high")]
+    active = df[df["use"].isin(uses) & (df["confidence"] == "high")]
     return dict(zip(active["term_de"], active["translation_en"]))
 
 
@@ -132,7 +150,7 @@ if __name__ == "__main__":
         print("❌ Glossary invalid:\n  " + "\n  ".join(problems))
         sys.exit(1)
     entries = load_entries()
-    print(f"✅ {len(df)} rows | {len(entries)} sent to DeepL (use = yes, confidence = high) | "
+    print(f"✅ {len(df)} rows | {len(entries)} sent to DeepL (use = yes or force, confidence = high) | "
           f"{len(df) - len(entries)} proposals to validate | hash {entries_hash(entries)}")
     for term, english in entries.items():
         print(f"  {term:20} -> {english}")

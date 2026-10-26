@@ -140,7 +140,7 @@ Used in the explorations of `data_cleaning.ipynb` (A: tokens, B: keywords by roo
 ### **Key Features Used in the Project** (`scripts/translation.py`)
 - **`detect_langs()`**: Language probabilities, reduced to `en` / `de`, computed **per journal entry** (a cell can mix German and English entries) and **before** the abbreviations are written out (pipeline step 5), because an abbreviation can have another meaning in each language. Known limit: short mixed entries (e.g., "via SafetyStock gedeckt") can be labelled English.
 - **`Translator.translate_text()`**: Batch translation (50 entries per call), with retry on rate limit; German entries only, pseudonymised, after the abbreviations are written out (pipeline step 7).
-- **Glossary** (`lexicon/glossary_de_en.csv`, `scripts/glossary.py`): German supply-chain jargon with a fixed English term (`Vorzug` → pull-in); created once on DeepL and reused while its content does not change.
+- **Glossary** (`lexicon/glossary_de_en.csv`, `scripts/glossary.py`): German supply-chain jargon with a fixed English term (`Vorzug` → pull-in); created once on DeepL and reused while its content does not change. DeepL does not always apply it (16 of 140 *Vorzug* entries still came out as *priority* or *benefits*): terms marked `use = force` are written in English inside an ignored `<keep>` tag before sending, so their translation is guaranteed.
 - **`Translator.get_usage()`**: Monthly character usage, printed after each run.
 
 ### **Alternatives Considered**

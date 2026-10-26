@@ -42,8 +42,10 @@ from pseudonymise import build_patterns, person_names, pseudonymise, report, res
 project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 COMMENTS_PATH = os.path.join(project_dir, "data", "cleaned_comments.csv")
 CACHE_PATH = os.path.join(project_dir, "data", "interim", "translation_cache.csv")
-# Earlier versions of cleaned_comments.csv: their Comment_EN translations are reused
-OLD_TRANSLATED_FILES = [os.path.join(project_dir, "data", "interim", "cleaned_comments_before_rebuild.csv")]
+# Earlier versions of cleaned_comments.csv: their Comment_EN translations were merged into the cache, which
+# now holds all of them (checked 26.10: 960 of 960). They are no longer read, so that a translation removed
+# from the cache to be redone (e.g. a wrong "Vorzug") does not come back from there.
+OLD_TRANSLATED_FILES = []
 
 
 DetectorFactory.seed = 0  # make langdetect reproducible
@@ -77,7 +79,7 @@ def normalize(text):
 
 
 def load_cache():
-    """Cache = every translation already paid for: the cache file + old Comment_EN columns."""
+    """Cache = every translation already paid for (the cache file; + old Comment_EN columns if listed)."""
     cache = {}
     if os.path.exists(CACHE_PATH):
         c = pd.read_csv(CACHE_PATH, dtype=str, keep_default_na=False)
@@ -115,7 +117,24 @@ def stale_entries(texts, cache, marks, entries):
     return [t for t in texts if t in cache and glossary_module.contains_term(t, pattern) and marks.get(t) != digest]
 
 
-def translate_missing(texts, cache, patterns, batch_size=50, glossary_entries=None, marks=None, translator=None):
+def protect_terms(text, patterns, forced):
+    """pseudonymise() + the forced glossary terms written in English inside <keep> tags (copied unchanged by
+    DeepL): returns (text to send, mapping placeholder -> value to put back)."""
+    if not forced:
+        return pseudonymise(text, patterns)
+    safe, mapping = pseudonymise(text, list(patterns) + [("TERM", glossary_module.forced_pattern(forced))])
+    return safe, {k: forced.get(v, v) if k.startswith("TERM_") else v for k, v in mapping.items()}
+
+
+def sentence_case(text, terms):
+    """A forced term is copied as written ("pull-in"): capital letter at the start of a sentence."""
+    for term in {t for t in terms if t[:1].islower()}:
+        text = re.sub(rf"(^|[.!?:]\s+|\n|-\s|--> ?)({re.escape(term)})", lambda m: m.group(1) + m.group(2)[0].upper() + m.group(2)[1:], text)
+    return text
+
+
+def translate_missing(texts, cache, patterns, batch_size=50, glossary_entries=None, marks=None, translator=None,
+                      forced=None):
     """Translate with DeepL the texts not in the cache; checkpoint after every batch.
     Only the pseudonymised version of each text is sent; the cache keeps the original.
     With glossary_entries, the DeepL glossary is created/reused and applied; if it cannot be set up,
@@ -142,7 +161,7 @@ def translate_missing(texts, cache, patterns, batch_size=50, glossary_entries=No
 
     for start in range(0, len(texts), batch_size):
         batch = texts[start:start + batch_size]
-        safe = [pseudonymise(t, patterns) for t in batch]  # [(text with placeholders, mapping)]
+        safe = [protect_terms(t, patterns, forced) for t in batch]  # [(text with placeholders, mapping)]
         for attempt in range(3):
             try:
                 results = translator.translate_text(
@@ -155,7 +174,8 @@ def translate_missing(texts, cache, patterns, batch_size=50, glossary_entries=No
                 time.sleep(5 * (attempt + 1))
         else:
             raise RuntimeError("DeepL rate limit: try again later (progress is saved).")
-        cache.update(zip(batch, [restore(r.text, m) for r, (_, m) in zip(results, safe)]))
+        cache.update(zip(batch, [sentence_case(restore(r.text, m), (forced or {}).values())
+                                 for r, (_, m) in zip(results, safe)]))
         if glossary_id:
             marks.update({t: digest for t in batch})
         else:
@@ -211,7 +231,9 @@ def add_translations(df, dry_run=False, refresh_glossary=False, use_glossary=Tru
         counts = report(todo, patterns)
         print("Pseudonymised before sending (number of texts):", counts.to_dict() if len(counts) else "nothing")
     if todo and not dry_run:
-        translate_missing(todo, cache, patterns, glossary_entries=glossary_entries, marks=marks, translator=translator)
+        forced = glossary_module.forced_entries() if use_glossary else {}
+        translate_missing(todo, cache, patterns, glossary_entries=glossary_entries, marks=marks, translator=translator,
+                          forced=forced)
     save_cache(cache, marks)
     return apply_cache(df, cache)[0]
 

@@ -56,7 +56,8 @@ def test_real_glossary_is_valid_and_only_high_confidence_is_sent():
     assert gl.validate(df) == []
     entries = gl.load_entries()
     assert entries and "Vorzug" in entries
-    assert set(entries) == set(df[(df.use == "yes") & (df.confidence == "high")].term_de)
+    assert set(entries) == set(df[df.use.isin(["yes", "force"]) & (df.confidence == "high")].term_de)
+    assert set(gl.forced_entries()) == set(df[df.use == "force"].term_de) and "Vorzugsanfrage" in gl.forced_entries()
 
 
 def test_validation_catches_mistakes():
@@ -146,3 +147,17 @@ def test_stale_entries_are_detected_and_only_redone_on_request():
         assert len(t.calls) == 1 and len(t.calls[0]["glossary"]) > 0
     finally:
         tr.load_cache, tr.load_marks, tr.save_cache, gl.load_entries = real
+
+
+def test_forced_terms_are_sent_in_english_inside_keep_tags():
+    forced = {"Vorzug": "pull-in", "Vorzugsanfrage": "pull-in request"}
+    safe, mapping = tr.protect_terms("Vorzugsanfrage läuft, Vorzug in Planung", [], forced)
+    assert "Vorzug" not in safe and safe.count("<keep>TERM_") == 2
+    assert sorted(mapping.values()) == ["pull-in", "pull-in request"]
+    assert tr.restore(safe, mapping) == "pull-in request läuft, pull-in in Planung"   # what DeepL copies back
+
+
+def test_forced_term_gets_a_capital_at_the_start_of_a_sentence():
+    assert tr.sentence_case("pull-in request is running. pull-ins: open", ["pull-in request", "pull-ins"]) \
+        == "Pull-in request is running. Pull-ins: open"
+    assert tr.sentence_case("we asked for a pull-in request", ["pull-in request"]) == "we asked for a pull-in request"

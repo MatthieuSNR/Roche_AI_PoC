@@ -1,5 +1,7 @@
 ﻿term_de,translation_en,category,context,confidence,use,status,comment,reviewer,reviewer_comment
-Vorzug,pull-in,expediting,Request to the supplier to deliver earlier than confirmed,high,yes,proposed,"DeepL renders it as priority, preference or priority shipping depending on the entry (inconsistent)",,
+Vorzug,pull-in,expediting,Request to the supplier to deliver earlier than confirmed,high,force,proposed,"DeepL renders it as priority, preference or priority shipping depending on the entry (inconsistent), even with the glossary: forced; meaning confirmed by Johannes Höttler (23.10: request for pull-in)",,
+Vorzüge,pull-ins,expediting,"Plural of Vorzug: requests to deliver earlier",high,force,proposed,"DeepL rendered it as benefits",,
+Vorzugsanfrage,pull-in request,expediting,"Compound of Vorzug: request to deliver earlier",high,force,proposed,"DeepL rendered it as priority request, preference request, pre-registration",,
 Vorziehen,pull-in,expediting,"Noun form, same meaning as Vorzug",high,yes,proposed,Capitalised noun form; glossary matching is case-sensitive,,
 vorziehen,pull in,expediting,Verb: bring a delivery or order forward,high,yes,proposed,"DeepL alternates between move up, expedite, bring forward",,
 vorzuziehen,to be pulled in,expediting,Verb with zu: delivery to be brought forward,high,yes,proposed,Inflected form listed separately,,
