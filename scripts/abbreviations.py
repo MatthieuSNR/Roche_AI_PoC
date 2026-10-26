@@ -22,10 +22,11 @@ Matching rules
 
 Usage (from the project root):
   python scripts/abbreviations.py --check      validates the library
-  python scripts/abbreviations.py --report     writes data/interim/abbreviations_review.csv (frequencies and
+  python scripts/abbreviations.py --sheet      writes data/interim/abbreviations_for_review.xlsx (sheet for the planners)
+  python scripts/abbreviations.py --report     on demand: data/interim/abbreviations_review.csv (frequencies and
                                                examples, CONFIDENTIAL: to share with the planners, not to push)
   python scripts/abbreviations.py --discover   lists abbreviation-like words that are not in the library yet
-  (--report and --discover read data/cleaned_comments.csv, or another file given with --comments PATH)
+  (--sheet, --report and --discover read data/cleaned_comments.csv, or another file given with --comments PATH)
 """
 
 import os

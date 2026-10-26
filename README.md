@@ -85,7 +85,7 @@ Roche_AI_PoC/
 2. **Build and translate the comments** (after adding new snapshots to `data/Snapshot_2026/`):
    ```bash
    python scripts/data_cleaning.py
-   python scripts/abbreviations.py --check --report   # validates the library, writes the review sheet (data/interim)
+   python scripts/abbreviations.py --check --sheet    # validates the library, writes the Excel sheet for the planners (data/interim)
    python scripts/abbreviations.py --sheet           # simple Excel for the planners: abbreviation, meaning, language (DE/EN)
    python scripts/glossary.py --check        # validates the DeepL glossary
    python scripts/translation.py --dry-run   # characters to send to DeepL + cached translations made without the glossary
