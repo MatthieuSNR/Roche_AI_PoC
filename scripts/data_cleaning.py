@@ -157,18 +157,21 @@ def describe_step(label, before, after):
 
 
 # ------------------------------------------------------------------ step 1
-def merge_snapshots(snapshot_dir=SNAPSHOT_DIR, commented_only=False):
+def merge_snapshots(snapshot_dir=SNAPSHOT_DIR, commented_only=False, verbose=False):
     """STEP 1. Assemble the snapshot CSV files into one table (Issue is renamed Root_Cause, comment Comment).
+    verbose=True prints the progress file by file.
     commented_only=True keeps only the commented rows while reading (less memory); the number of rows
     read is then given in table.attrs['rows_total'], the number of files in table.attrs['n_files']."""
     files = sorted(glob.glob(os.path.join(snapshot_dir, "*.csv")))
     if not files:
         raise FileNotFoundError(f"No snapshot CSV found in {snapshot_dir}")
     parts, total, started = [], 0, time.time()
-    for file in files:
+    for i, file in enumerate(files, 1):
         df = pd.read_csv(file, low_memory=False)
         total += len(df)
         parts.append(df[df["comment"].notna()] if commented_only else df)
+        if verbose:   # progress, to see that the reading advances
+            print(f"  file {i}/{len(files)} read: {os.path.basename(file)} ({time.time() - started:.0f} s)", flush=True)
     df = pd.concat(parts, ignore_index=True).rename(columns={"Issue": "Root_Cause", "comment": "Comment"})
     df.attrs.update(rows_total=total, n_files=len(files), seconds=round(time.time() - started, 1))
     return df
