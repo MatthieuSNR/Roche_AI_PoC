@@ -213,11 +213,27 @@ def add_translations(df, dry_run=False, refresh_glossary=False, use_glossary=Tru
     if todo and not dry_run:
         translate_missing(todo, cache, patterns, glossary_entries=glossary_entries, marks=marks, translator=translator)
     save_cache(cache, marks)
+    return apply_cache(df, cache)[0]
 
-    def translated(row, langs):
-        return join_entries(cache.get(e, e) if lang == "de" else e for e, lang in zip(row, langs))
-    df["Comment_EN"] = [translated(row, langs) for row, langs in zip(entries, languages)]
-    return df
+
+def apply_cache(df, cache=None):
+    """comment_language and Comment_EN from the translation cache only: no DeepL call, no cost.
+    Used by add_translations and when data_cleaning saves the file, so that a rebuild keeps the
+    translations already paid for. A German entry not yet in the cache stays in German in Comment_EN.
+    Returns (table, missing): missing = the distinct German entries not in the cache."""
+    df = df.copy()
+    text_column = "Comment_Expanded" if "Comment_Expanded" in df.columns else "Comment"
+    languages = entry_languages(df, text_column)
+    df["Entry_Languages"] = ["|".join(langs) for langs in languages]
+    df["comment_language"] = ["de" if "de" in langs else "en" for langs in languages]
+    cache = load_cache() if cache is None else cache
+
+    entries = [[normalize(e) for e in split_cell(t)] for t in df[text_column]]
+    df["Comment_EN"] = [join_entries(cache.get(e, e) if lang == "de" else e for e, lang in zip(row, langs))
+                        for row, langs in zip(entries, languages)]
+    missing = sorted({e for row, langs in zip(entries, languages) for e, lang in zip(row, langs)
+                      if lang == "de" and e and e not in cache})
+    return df, missing
 
 
 if __name__ == "__main__":

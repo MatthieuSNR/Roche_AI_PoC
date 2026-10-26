@@ -19,6 +19,8 @@ numbered steps; the same numbers are used in the code (`data_cleaning.py`, `tran
 
 Steps 1 to 6: `scripts/data_cleaning.py` and `data_cleaning.ipynb`; step 7: `scripts/translation.py` and `translation.ipynb`.
 
+**Save** (`save_cleaned_comments`): the file is written with `Comment_EN` already filled from the translation cache (no DeepL call). A rebuild therefore keeps every translation already paid for, and the file is directly usable by the dashboard; only German entries that are not in the cache yet need step 7 (until then they stay in German in `Comment_EN`, and the save step says how many there are).
+
 ### Step 1: Assemble the snapshots
 - `glob` + `pandas` read every CSV file of `data/Snapshot_2026` (one file per week, one snapshot per day). `Issue` is renamed `Root_Cause`.
 - Week 27 exists twice: `W27_Clean.csv` holds only its first day (29.06), `W27_FullClean.csv` the whole week, with identical rows for that day. A `_Clean` file is skipped when the `_FullClean` of the same week exists, otherwise 11,971 rows were counted twice. Check in the notebook: about 12,000 rows per day (min 10,799, max 12,660).
@@ -92,8 +94,8 @@ Steps 1 to 6: `scripts/data_cleaning.py` and `data_cleaning.ipynb`; step 7: `scr
 - **Limits**: one shared password, link changes at each start, third party (ngrok) in the path: acceptable for a short test, not for production. Details in `tools_justification.md`, section 12.
 
 ## 📌 Part F: Tests
-- **Actions**: `python -m pytest -q tests` (39 tests), synthetic data only, fake API clients: no network, no key, no Roche data.
-  - `test_comment_cleaning.py`: journal entries and signatures (chains, typos, `n/a`), snapshot merge (partial week skipped), abbreviations by language, entry-by-entry translation, no login in the output.
+- **Actions**: `python -m pytest -q tests` (40 tests), synthetic data only, fake API clients: no network, no key, no Roche data.
+  - `test_comment_cleaning.py`: journal entries and signatures (chains, typos, `n/a`), snapshot merge (partial week skipped), abbreviations by language, entry-by-entry translation, `Comment_EN` from the cache when saving (no DeepL call), no login in the output.
   - `test_glossary.py`: validation of the glossary, creation and reuse on DeepL, stale translations redone only on request.
   - `test_pseudonymise.py`: identifying elements replaced and restored (DeepL path).
   - `test_cloud_summary.py`: no real name in the Mistral request, aliases restored in the streamed answer.
@@ -109,10 +111,10 @@ source venv/bin/activate
 |------|---------|--------------|
 | 1. Add the files | copy the new CSV files into `data/Snapshot_2026/` | Same columns as the existing files; the file name does not matter, days already present are not counted twice. |
 | 2. Rebuild (steps 1-6) | `python scripts/data_cleaning.py` (or Run All in `data_cleaning.ipynb`) | Re-reads **all** snapshots and rewrites `data/cleaned_comments.csv` (~30 s): new comments added, `Last_Seen` / `Days_Active` updated, latest root cause and impact taken. |
-| 3. Translate (step 7) | `python scripts/translation.py --dry-run` then `python scripts/translation.py` (or `translation.ipynb`) | The dry run only counts the characters to send. The real run pseudonymises and translates **only the new** German comments (the others come from the cache) and prints the monthly DeepL usage. If interrupted, just run it again. |
+| 3. Translate (step 7) | only if step 2 reports German entries not translated yet: `python scripts/translation.py --dry-run` then `python scripts/translation.py` (or `translation.ipynb`) | The dry run only counts the characters to send. The real run pseudonymises and translates **only the new** German comments (the others come from the cache) and prints the monthly DeepL usage. If interrupted, just run it again. |
 | 4. Reload | Streamlit → menu **⋮** → **Clear cache**, then **Rerun** (or `Ctrl + C` and `streamlit run scripts/app.py`) | Streamlit keeps the data in memory: "Rerun" alone does not reload the CSV. |
 
-- ⚠️ Always run step 3 right after step 2, **also after running `data_cleaning.ipynb`**: the rebuilt file has no `Comment_EN` column until the translation is done, and the dashboard and `llm_summary.ipynb` need it. Translations already in the cache cost nothing.
+- Step 2 already fills `Comment_EN` from the translation cache, so after a rebuild the dashboard works at once. Step 3 is needed only for new German entries (step 2 prints their number); until then they appear in German.
 - **GitHub**: a data update needs no push. Snapshots, `cleaned_comments.csv`, the translation cache and the saved views are confidential and excluded by `.gitignore`. Only code changes (`scripts/`) are pushed.
 - **Keys**: `DEEPL_API_KEY`, `MISTRAL_API_KEY` and `APP_PASSWORD` go in the `.env` file at the project root; `scripts/config.py` reads it. Never commit it.
 

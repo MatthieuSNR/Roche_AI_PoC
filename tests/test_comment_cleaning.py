@@ -164,6 +164,17 @@ def test_translation_works_entry_by_entry(monkeypatch):
     assert list(out["comment_language"]) == ["de", "de"]
 
 
+def test_save_takes_comment_en_from_the_cache_without_deepl(monkeypatch, tmp_path):
+    df = pd.DataFrame({"Comment_Expanded": ["Vorzug angefragt ¦▸ supplier confirmed", "Ware fehlt"],
+                       "Entry_Languages": ["de|en", "de"]})
+    monkeypatch.setattr(tr, "load_cache", lambda: {"Vorzug angefragt": "pull-in requested"})
+    monkeypatch.setattr(tr, "translate_missing", lambda *a, **k: (_ for _ in ()).throw(AssertionError("DeepL called")))
+    out, missing = dc.save_cleaned_comments(df, path=tmp_path / "out.csv")
+    assert list(out["Comment_EN"]) == ["pull-in requested ¦▸ supplier confirmed", "Ware fehlt"]   # not cached: stays German
+    assert missing == ["Ware fehlt"]
+    assert list(pd.read_csv(tmp_path / "out.csv")["Comment_EN"]) == list(out["Comment_EN"])
+
+
 def test_review_sheet_has_three_simple_columns_and_the_entry_language():
     table = pd.DataFrame([{"abbreviation": "PLZ", "match": "exact", "pattern": "", "applies_to": "both",
                            "expansion_de": "Planlieferzeit", "expansion_en": "planned delivery time",

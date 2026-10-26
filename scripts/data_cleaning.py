@@ -11,6 +11,8 @@ so that every step can be run and checked on its own in scripts/data_cleaning.ip
   5. detect_languages       language (de / en) of every entry
   6. expand_abbreviations   write the certain abbreviations out, according to the language of the entry
   then scripts/translation.py: 7. pseudonymise -> DeepL (with glossary and cache), entry by entry.
+save_cleaned_comments writes the file with Comment_EN taken from the translation cache (no DeepL call), so
+that a rebuild does not lose the translations already paid for; only new German entries need step 7.
 
 A comment cell is a JOURNAL: the tool writes one entry per line, each signed and dated
 ("login, 2026-06-18: message"), and re-signs an entry every time it is edited, which gives
@@ -30,7 +32,7 @@ instead of keeping only its first appearance we record how long it was visible: 
 N_Snapshots and Days_Active. The other columns (status, root cause, impact...) take their latest known value.
 
 Usage (from the project root):  python scripts/data_cleaning.py
-Then translate the German comments: python scripts/translation.py
+Then translate the new German entries (if any): python scripts/translation.py
 """
 
 import glob
@@ -269,6 +271,16 @@ def select_output_columns(df):
     return out.sort_values(["Last_Seen", "MATERIAL_NUMBER"], ascending=[False, True]).reset_index(drop=True)
 
 
+def save_cleaned_comments(df, path=OUTPUT_PATH):
+    """SAVE. Writes cleaned_comments.csv with comment_language and Comment_EN taken from the translation
+    cache (no DeepL call). Returns (table written, German entries not in the cache yet): these stay in
+    German in Comment_EN until python scripts/translation.py is run."""
+    from translation import apply_cache
+    df, missing = apply_cache(df)
+    df.to_csv(path, index=False)
+    return df, missing
+
+
 def load_commented_rows(snapshot_dir=SNAPSHOT_DIR):
     """Steps 1 + 2: every snapshot read, only the rows that carry a comment kept."""
     return keep_commented_rows(merge_snapshots(snapshot_dir, commented_only=True))
@@ -301,6 +313,9 @@ if __name__ == "__main__":
     print(f"Comments with several entries: {(cleaned['N_Entries'] > 1).sum()} "
           f"(max {cleaned['N_Entries'].max()} entries) | entries in total: {cleaned['N_Entries'].sum()}")
 
-    cleaned.to_csv(OUTPUT_PATH, index=False)
-    print(f"✅ Saved to {OUTPUT_PATH}")
-    print("Next step: python scripts/translation.py (7. pseudonymises, translates entry by entry: adds Comment_EN)")
+    cleaned, missing = save_cleaned_comments(cleaned)
+    print(f"✅ Saved to {OUTPUT_PATH}, Comment_EN from the translation cache")
+    if missing:
+        print(f"{len(missing)} German entries are not translated yet: python scripts/translation.py")
+    else:
+        print("All German entries are translated: the file is ready for the dashboard.")

@@ -134,7 +134,7 @@ Used in the explorations of `data_cleaning.ipynb` (A: tokens, B: keywords by roo
  |-----------------------|-------------------|
  | **Need**              | About two thirds of the planner comments are written in **German**; translating them to English gives one language for analysis, dashboard and LLM summary. |
  | **Translation quality** | DeepL handles **German supply-chain jargon and abbreviations** (e.g., "best. LT", "Stk") better than generic free tools. |
- | **Cost control**      | Only German comments are sent, and every translation is stored in `data/interim/translation_cache.csv`: a comment is **paid for only once**, even after a data rebuild. A `--dry-run` mode counts the characters before sending (free plan: 500,000 characters/month). |
+ | **Cost control**      | Only German comments are sent, and every translation is stored in `data/interim/translation_cache.csv`: a comment is **paid for only once**, even after a data rebuild (the rebuild itself fills `Comment_EN` from the cache). A `--dry-run` mode counts the characters before sending (free plan: 500,000 characters/month). |
  | **Detection accuracy** | `langdetect` alone labelled short German comments as Hungarian, Catalan, Norwegian… (≈12 %), and these were never translated. Detection is therefore **restricted to English/German**, with a small German lexicon as fallback. |
 
 ### **Key Features Used in the Project** (`scripts/translation.py`)
@@ -429,7 +429,7 @@ Each folder and file has a **clear purpose**, making the project **easy to maint
  | **Simplicity**        | Plain functions with `assert`; `python -m pytest -q tests`. |
 
 ### **What Is Tested**
-- `tests/test_comment_cleaning.py`: journal entries and signatures (chains, typos, signature in a line, `n/a`), snapshot merge (partial week skipped), one row per comment without login, abbreviations by language, entry-by-entry translation.
+- `tests/test_comment_cleaning.py`: journal entries and signatures (chains, typos, signature in a line, `n/a`), snapshot merge (partial week skipped), one row per comment without login, abbreviations by language, entry-by-entry translation, `Comment_EN` taken from the cache when the cleaned file is saved (DeepL never called).
 - `tests/test_glossary.py`: validation of the glossary, whole-word case-sensitive matching, glossary created once and reused, stale translations redone only on request.
 - `tests/test_pseudonymise.py`: identifying elements are replaced and restored; the same value gets the same placeholder (DeepL path).
 - `tests/test_cloud_summary.py`: the request of the Smart Analysis contains no real supplier, MRP controller, purchasing group, material number or e-mail; a supplier gets the same alias in the statistics and in the comments; aliases of the streamed answer (even split across chunks) are replaced by the real names; the local prompt is unchanged.

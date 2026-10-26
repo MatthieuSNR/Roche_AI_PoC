@@ -23,7 +23,7 @@ Roche_AI_PoC/
 │
 ├── scripts/                       # Python code of the PoC (flat: the notebooks import the modules directly)
 │   │   # --- Pipeline (data/Snapshot_2026 -> data/cleaned_comments.csv)
-│   ├── data_cleaning.py           # Steps 1-6: merge, commented rows, journal entries, one row per comment, language, abbreviations
+│   ├── data_cleaning.py           # Steps 1-6: merge, commented rows, journal entries, one row per comment, language, abbreviations; save with Comment_EN from the cache
 │   ├── entries.py                 # Separator " ¦▸ " between the journal entries of a cell (used by every module)
 │   ├── abbreviations.py           # Reads lexicon/abbreviations.csv, writes abbreviations out, Excel sheet for the planners
 │   ├── translation.py             # Step 7: language per entry, DeepL with cache and glossary -> Comment_EN

@@ -99,7 +99,7 @@ Roche_AI_PoC/
    # python scripts/translation.py --refresh-glossary   # (optional) also redo those, costs characters
    python scripts/translation.py
    ```
-   The same steps can be run and checked one by one in `scripts/data_cleaning.ipynb` and `scripts/translation.ipynb` (see [docs/project_steps.md](docs/project_steps.md)). Always translate after a rebuild: the dashboard needs `Comment_EN`.
+   The same steps can be run and checked one by one in `scripts/data_cleaning.ipynb` and `scripts/translation.ipynb` (see [docs/project_steps.md](docs/project_steps.md)). The rebuild already fills `Comment_EN` from the translation cache; `translation.py` is only needed for new German entries (the rebuild prints their number).
 
 3. **Launch the Streamlit dashboard** (only on this Mac):
    ```bash
