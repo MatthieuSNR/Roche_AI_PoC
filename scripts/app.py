@@ -512,14 +512,14 @@ with tab2:
             all_total = len(df)
             compare_df = pd.DataFrame({
                 "Root Cause": root_cause_counts.index,
-                f"% of {selection_name} comments": (root_cause_counts.values / total_comments * 100).round(1),
-                "% of all comments": [round((all_causes == c).sum() / all_total * 100, 1)
+                f"% of {selection_name} comments": (root_cause_counts.values / total_comments * 100).round(2),
+                "% of all comments": [round((all_causes == c).sum() / all_total * 100, 2)
                                       for c in root_cause_counts.index],
             })
-            compare_df["Difference (pts)"] = (compare_df.iloc[:, 1] - compare_df.iloc[:, 2]).round(1)
+            compare_df["Difference (pts)"] = compare_df.iloc[:, 1] - compare_df.iloc[:, 2]
             st.markdown("**Compared with all comments**")
-            st.dataframe(ui.compare_colours(compare_df, compare_df.columns[1], "% of all comments")
-                         .format({"Difference (pts)": "{:+.1f}"}), use_container_width=True, hide_index=True,
+            st.dataframe(ui.compare_colours(compare_df, compare_df.columns[1], "% of all comments", decimals=2),
+                         use_container_width=True, hide_index=True,
                          column_config={compare_df.columns[1]: st.column_config.NumberColumn(help=ui.COMPARE_HELP)})
             st.caption(ui.COMPARE_LEGEND.replace("'% of selection'", "the selection"))
 

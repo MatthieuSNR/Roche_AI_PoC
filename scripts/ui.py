@@ -78,12 +78,11 @@ section[data-testid="stSidebar"] button[data-testid="baseButton-header"]::before
   background: #fff; border: 1px solid #E1E5EB; border-radius: {RADIUS}; padding: 10px;
   box-shadow: 0 1px 2px rgba(0,0,0,.05); max-width: 100%; box-sizing: border-box;
 }}
-/* Sidebar filters: the chosen values (blue tags) show their whole name, on several lines if needed,
-   whatever the width of the sidebar */
-section[data-testid="stSidebar"] [data-baseweb="tag"] {{ height: auto; max-width: 100%; min-width: 0; }}
+/* Sidebar filters: a chosen value (blue tag) stays on one line and uses the width of the sidebar; when it is
+   too long, its beginning is shown, ended by "…" (the filters below do not move down) */
+section[data-testid="stSidebar"] [data-baseweb="tag"] {{ max-width: 100%; min-width: 0; }}
 section[data-testid="stSidebar"] [data-baseweb="tag"] span[title] {{
-  max-width: none; white-space: normal; overflow-wrap: anywhere; text-overflow: clip; overflow: visible;
-  line-height: 1.3; padding: 3px 0;
+  max-width: none; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }}
 section[data-testid="stSidebar"] [data-baseweb="select"] > div > div:first-child {{ min-width: 0; }}
 
@@ -551,11 +550,13 @@ def compare_colour(value, reference):
     return f"background-color: rgba({rgb}, {0.18 + 0.27 * strength:.2f})"
 
 
-def compare_colours(frame, column, reference_column):
-    """The frame as a Styler, `column` coloured against `reference_column` (compare_colour)."""
+def compare_colours(frame, column, reference_column, decimals=1):
+    """The frame as a Styler, `column` coloured against `reference_column` (compare_colour). The Styler decides
+    how the numbers are written: every other number column gets `decimals` too (with a sign if 'Difference')."""
     colours = [compare_colour(v, r) for v, r in zip(frame[column], frame[reference_column])]
+    numbers = frame.select_dtypes("float").columns   # counts stay whole numbers
     return (frame.style.apply(lambda _: colours, subset=[column])
-            .format({c: "{:.1f}" for c in (column, reference_column)}))
+            .format({c: ("{:+.%df}" if c.startswith("Difference") else "{:.%df}") % decimals for c in numbers}))
 
 
 def status_definitions():
