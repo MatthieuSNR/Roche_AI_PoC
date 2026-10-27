@@ -144,7 +144,8 @@ def _groups(entries, threshold, method):
 
 def _stacked_bars(shares, counts, colors, title, xlabel, notes=None):
     """Horizontal 100% bars: one row per category, one coloured segment per column; counts written in segments."""
-    fig, ax = plt.subplots(figsize=(11, 0.42 * len(shares) + 1.6))
+    # thin rows: the title, the legend (above) and the axis (below) fit on one screen
+    fig, ax = plt.subplots(figsize=(12, 0.25 * len(shares) + 1.5))
     left = np.zeros(len(shares))
     labels = [c if len(c) <= 42 else c[:41] + "…" for c in shares.index]
     for column in shares.columns:
@@ -358,6 +359,10 @@ def page_cause_impact(tracking, selection_name):
         return
     min_items = panel.slider(f"Show the {by.lower()}s with at least ... items with a communicated impact:", 1, 30, 5,
                           key="lab_min_items", help="Small numbers give unstable percentages: 5 or more is a good minimum.")
+    max_bars = panel.slider("Bars in the charts (at most):", 6, 40, 16, 2, key="lab_max_bars",
+                            help="Beyond this number, the charts keep the root causes that most often and least often "
+                                 "lead to a severe impact (half each), so that a chart fits on the screen. The table "
+                                 "under the charts lists them all.")
     shown = per_cause[per_cause["Impact communicated"] >= min_items].sort_values("% severe", ascending=False)
     if shown.empty:
         st.info("No root cause reaches this minimum; lower it.")
@@ -378,11 +383,16 @@ def page_cause_impact(tracking, selection_name):
         lines.append("No root cause differs clearly from the average in this selection (the differences may be chance).")
     insights_box(lines)
 
-    # --- chart 1: impact per root cause
-    order = shown["Root cause"].tolist()
+    # --- chart 1: impact per root cause (at most max_bars: the most and the least often severe)
+    charted = shown if len(shown) <= max_bars else pd.concat([shown.head(max_bars // 2), shown.tail(max_bars // 2)])
+    order = charted["Root cause"].tolist()
     counts = table.loc[order, list(IMPACT_COLORS)]
     shares = counts.div(counts.sum(axis=1), axis=0) * 100
-    notes = [f"{n} items{' ★' if p < SIGNIFICANT else ''}" for n, p in zip(counts.sum(axis=1), shown["p-value"])]
+    notes = [f"{n} items{' ★' if p < SIGNIFICANT else ''}" for n, p in zip(counts.sum(axis=1), charted["p-value"])]
+    if len(charted) < len(shown):
+        st.caption(f"The charts show the {max_bars // 2} {by.lower()}s that most often and the {max_bars // 2} that "
+                   f"least often lead to a severe impact, out of {len(shown)}; the table below lists them all "
+                   "(Options: more bars).")
     ui.chart(_stacked_bars, shares, counts, IMPACT_COLORS, f"Impact communicated per {by.lower()} (sorted by share of "
              "Production + Market)", "% of the items with a communicated impact", notes)
     explain("Each bar = 100% of the items of a root cause whose impact was communicated. **Dark red and red** = "
@@ -446,7 +456,7 @@ def _weak_signals(_tracking, _comments_en, version):
 def _bar_vs_average(frame, label_column, value_column, average, title, highlight):
     """Horizontal bars of a share, with the average as a dashed line; significant rows in red."""
     frame = frame.iloc[::-1]
-    fig, ax = plt.subplots(figsize=(10, 0.38 * len(frame) + 1.3))
+    fig, ax = plt.subplots(figsize=(11, 0.27 * len(frame) + 1.3))
     labels = [str(v) if len(str(v)) <= 45 else str(v)[:44] + "…" for v in frame[label_column]]
     colors = ["#E0443A" if h else "#F28C28" for h in highlight[::-1]]
     ax.barh(labels, frame[value_column], color=colors)
