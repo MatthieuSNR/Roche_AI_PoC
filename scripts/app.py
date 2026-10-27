@@ -15,7 +15,7 @@ from llm_summary import (stream_summary, stream_summary_cloud, tidy, is_server_a
                          is_cloud_configured)
 from pseudonymise import PromptPseudonymiser
 from entries import ENTRY_SEPARATOR
-from stats_engine import compute_stats, root_cause_sources, weekly_active, NO_ROOT_CAUSE
+from stats_engine import compute_stats
 import ui
 import insights_pages
 
@@ -37,7 +37,7 @@ def check_password():
     password = os.getenv("APP_PASSWORD", "")
     if not password or st.session_state.get("authenticated"):
         return
-    st.title("Material Availability – Insights from Planner Comments")
+    st.title("Material Availability – Insights Lab")
     entered = st.text_input("Password", type="password")
     if entered:
         if entered == password:
@@ -108,20 +108,19 @@ SECTIONS = [
     ("filtered-comments", "Filtered Comments"),
     ("top-root-causes", "Top Root Causes"),
     ("frequent-comments", "Most Frequent Comments"),
-    ("root-cause-details", "Comments for a Root Cause"),
     ("trends", "Root Cause Trends"),
     ("key-statistics", "Key Statistics"),
     ("ai-summary", "Smart Analysis"),
 ]
 SECTION_TITLES = dict(SECTIONS)
-# New pages being validated (Insights Lab, scripts/insights_pages.py): second row of the menu.
+# Deeper analyses (scripts/insights_pages.py): second row of the menu.
 # Changing page is a rerun, not a reload: filters and password are kept. The page is also put in the
 # URL (?page=...), so that a reload or a shared link opens the same page.
 LAB_PAGES = [("", "Main page")] + insights_pages.PAGES
 if "lab_page" not in st.session_state:
     st.session_state["lab_page"] = st.query_params.get("page", "") if st.query_params.get("page", "") in dict(LAB_PAGES) else ""
 with st.container():
-    ui.top_bar("Material Availability", "Insights from Planner Comments", SECTIONS)
+    ui.top_bar("Material Availability", "Insights Lab", SECTIONS)
     PAGE = ui.lab_menu(LAB_PAGES, insights_pages.LAB_LABEL, key="lab_page")
 if PAGE:
     st.query_params["page"] = PAGE
@@ -362,7 +361,7 @@ st.caption("Each comment is written on an item of the ION workbench (a material 
 ui.status_definitions()
 
 # --- Sections: all analyses follow each other on one page (menu at the top to jump) ---
-tab1, tab2, tab3, tab4, tab5, tab6, tab7 = [st.container() for _ in range(7)]
+tab1, tab2, tab3, tab5, tab6, tab7 = [st.container() for _ in range(6)]
 
 
 
@@ -506,155 +505,14 @@ with tab2:
             st.dataframe(compare_df, use_container_width=True, hide_index=True)
 
 
-# ================= SECTION 3: Most Frequent Comments =================
-
+# ================= SECTIONS 3-4: Most Frequent Comments, Root Cause Trends =================
+# The validated pages of the Insights Lab (scripts/insights_pages.py) replace the first versions: similar
+# wordings grouped; trends on all snapshot rows, with what changed between two weeks.
 with tab3:
-    ui.section("frequent-comments", SECTION_TITLES["frequent-comments"])
+    insights_pages.frequent_comments_section(filtered_df, selection_name)
 
-    top_n_comments = st.selectbox(
-        "Select a view:", options=["Top 5", "Top 10", "Top 20"], key="radio_top_comments",
-    )
-    n_comments = int(top_n_comments.split(" ")[1])
-
-    # Count identical comments in the filtered data (same text on several materials / vendors)
-    # (a journal with several entries counts each entry on its own)
-    with_text = filtered_df.dropna(subset=["Comment_EN"])
-    entries_df = with_text.assign(Comment_EN=with_text["Comment_EN"].astype(str).str.split(ENTRY_SEPARATOR.strip(), regex=False)).explode("Comment_EN")
-    entries_df["Comment_EN"] = entries_df["Comment_EN"].str.strip()
-    entries_df = entries_df[entries_df["Comment_EN"] != ""]
-    top_comments_df = (
-        entries_df.groupby("Comment_EN")
-        .agg(Occurrences=("Comment_EN", "size"),
-             Materials=("MATERIAL_NUMBER", "nunique"),
-             Vendors=("VENDOR_NAME", "nunique"),
-             Days_visible=("Days_Active", "sum"),
-             Root_Cause=("Root_Cause", lambda s: s.mode().iloc[0] if s.notna().any() else NO_ROOT_CAUSE))
-        .sort_values(["Occurrences", "Days_visible"], ascending=False)
-        .head(n_comments)
-        .reset_index()
-    )
-    top_comments_df.insert(2, "% of comments", (top_comments_df["Occurrences"] / max(len(filtered_df), 1) * 100).round(1))
-
-    # Display as a clean table
-    ui.picked_table("t_frequent", 
-        top_comments_df.rename(columns={"Comment_EN": "Comment (EN)", "Days_visible": "Days visible (total)",
-                                        "Root_Cause": "Main root cause"}),
-        use_container_width=True, hide_index=True,
-        column_config={"Comment (EN)": st.column_config.TextColumn(width="large")},
-    )
-    st.caption("Occurrences = number of (material, vendor) the same comment was written for. "
-               "Days visible = total days these comments stayed in the dashboard.")
-
-
-# ================= SECTION 4: Comments for a Root Cause =================
-
-with tab4:
-    ui.section("root-cause-details", SECTION_TITLES["root-cause-details"])
-    # Show all root causes of the filtered data (not just top N)
-    causes_available = filtered_df["Root_Cause"].value_counts().index.tolist()
-    if causes_available:
-        selected_cause_for_details = st.selectbox(
-            "Select a root cause:", causes_available
-        )
-        details = filtered_df[filtered_df["Root_Cause"] == selected_cause_for_details]
-        st.caption(f"{len(details)} comments = {len(details) / len(filtered_df) * 100:.1f}% "
-                   f"of the comments of the selection.")
-
-        # Where does this root cause come from? (vendors and MRP controllers)
-        # (short column names so that the three tables fit side by side)
-        short_names = {f"% of '{selected_cause_for_details}' comments": "% of this cause",
-                       "% of this entity's comments": "% of its comments"}
-        for column, (by, label) in zip(st.columns(3), [("VENDOR_NAME", "Vendor"),
-                                                        ("PURCHASING_GROUP", "Purchasing Group"),
-                                                        ("MRP_CONTROLLER", "MRP Controller")]):
-            with column:
-                st.markdown(f"**{label}s with this root cause**")
-                st.dataframe(root_cause_sources(filtered_df, selected_cause_for_details, by)
-                             .rename(columns={by: label, **short_names}),
-                             use_container_width=True, hide_index=True)
-        st.caption("% of this cause = share of the comments with this root cause; "
-                   "% of its comments = share of the vendor's (group's, controller's) comments.")
-
-        st.markdown("**Comments**")
-        details = details.assign(Comment_EN=inline_entries(details["Comment_EN"]))
-        ui.picked_table("t_cause_details", 
-            details.sort_values("Last_Seen", ascending=False)[
-                ["Comment_EN", "Days_Active", "VENDOR_LABEL", "PURCHASING_GROUP", "MRP_CONTROLLER", "MATERIAL_LABEL"]].rename(
-                columns={
-                    "Comment_EN": "Comment (EN)",
-                    "Days_Active": "Days visible",
-                    "VENDOR_LABEL": "Vendor",
-                    "PURCHASING_GROUP": "Purchasing Group",
-                    "MRP_CONTROLLER": "MRP Controller",
-                    "MATERIAL_LABEL": "Material",
-                }
-            ),
-            use_container_width=True, hide_index=True,
-            column_config={"Comment (EN)": st.column_config.TextColumn(width="large")},
-        )
-    else:
-        st.info("No comments with a root cause match the current filters.")
-
-
-
-# ================= SECTION 5: Root Cause Trends Over Time =================
 with tab5:
-    ui.section("trends", SECTION_TITLES["trends"])
-
-    # 1. Count comments visible each week, per root cause — pandas does the math
-    #    (snapshots are daily: a weekly view is readable and a comment open for
-    #    5 weeks counts in each of those weeks)
-    trend_data = weekly_active(filtered_df.dropna(subset=["Root_Cause"]), by="Root_Cause")
-    if PERIOD and not trend_data.empty:   # only the weeks that overlap the timeframe (index = Sunday of the week)
-        week_end = pd.to_datetime(trend_data.index)
-        trend_data = trend_data[(week_end >= PERIOD[0].normalize()) & (week_end - pd.Timedelta(days=6) <= PERIOD[1])]
-
-    if trend_data.empty:
-        st.info("No data to display for the current filters.")
-    else:
-        # 2. Root causes to display: the top 5 of the filtered data by default,
-        #    the user can add or remove any root cause of the selection
-        causes_by_frequency = filtered_df["Root_Cause"].value_counts().index.tolist()
-        selected_trend_causes = st.multiselect(
-            "Root causes to display (default: the 5 most frequent):",
-            options=causes_by_frequency,
-            default=causes_by_frequency[:5],
-            key="trend_causes",
-        )
-        trend_selected = trend_data[[c for c in selected_trend_causes if c in trend_data.columns]]
-
-        if trend_selected.empty:
-            st.info("Select at least one root cause to display.")
-        else:
-            # 3. Plot: one line per root cause (20 distinct colours when many are selected)
-            fig, ax = plt.subplots(figsize=(12, 6))
-            line_colors = plt.cm.tab20.colors if len(trend_selected.columns) > 8 else None
-            for i, cause in enumerate(trend_selected.columns):
-                ax.plot(
-                    trend_selected.index,
-                    trend_selected[cause],
-                    marker="o",
-                    label=cause,
-                    color=line_colors[i % 20] if line_colors else None,
-                )
-            ax.set_title(f"Root Cause Evolution — {selection_name}")
-            ax.set_xlabel("Week")
-            ax.set_ylabel("Comments visible during the week")
-            ax.legend(title="Root Cause", bbox_to_anchor=(1.02, 1), loc="upper left")
-            plt.xticks(rotation=45)
-            plt.tight_layout()
-            st.pyplot(fig)
-
-            # 4. Simple numeric insight (computed by pandas, not hallucinated!)
-            ui.panel_header("Key Numbers")
-            if "comments_first_snapshot" in stats:
-                first, last = stats["comments_first_snapshot"], stats["comments_last_snapshot"]
-                st.metric(
-                    f"Comments visible (week of {stats['first_snapshot']} → week of {stats['last_snapshot']})",
-                    f"{first} → {last}",
-                    delta=f"{last - first:+d}",
-                )
-
+    insights_pages.trends_section(df, LAB_SELECTIONS, selection_name, PERIOD)
 
 
 # ================= SECTION 6: Key Statistics =================

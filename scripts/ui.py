@@ -116,7 +116,7 @@ div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .i
   border-top: none; padding: 4px; box-shadow: 0 2px 4px rgba(0,0,0,.06);
 }}
 div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) [role="radiogroup"]::before {{
-  content: "Insights Lab · new pages to validate"; font-size: .74rem; font-weight: 600; color: {ION_BLUE};
+  content: "Deeper analyses"; font-size: .74rem; font-weight: 600; color: {ION_BLUE};
   text-transform: uppercase; letter-spacing: .03em; padding: 6px 10px 6px 8px; border-right: 1px solid #D6DCE5;
   margin-right: 4px;
 }}
@@ -144,6 +144,16 @@ div[data-testid="element-container"]:has( iframe[height="0"]) {{ display: none; 
   background: {ION_BLUE}; color: #fff; font-weight: 600; padding: 7px 14px; border-radius: {RADIUS};
   margin: 18px 0 8px 0; font-size: .98rem;
 }}
+/* Folded panels (insights_pages.fold): a blue header like .ion-panel, the arrow on the right opens it */
+[data-testid="stExpander"]:has(.ion-fold) {{ margin: 18px 0 8px 0; }}
+[data-testid="stExpander"]:has(.ion-fold) details {{ border: 1px solid {ION_BLUE}; }}
+[data-testid="stExpander"]:has(.ion-fold) summary {{ background: {ION_BLUE}; padding: 7px 14px; }}
+[data-testid="stExpander"]:has(.ion-fold) summary p {{ color: #fff; font-weight: 600; font-size: .98rem; }}
+[data-testid="stExpander"]:has(.ion-fold) summary svg {{ color: #fff; fill: #fff; }}
+[data-testid="stExpander"]:has(.ion-fold) summary:hover p, [data-testid="stExpander"]:has(.ion-fold) summary:hover svg {{
+  color: #fff; fill: #fff; opacity: .85;
+}}
+[data-testid="stMarkdownContainer"]:has(.ion-fold) {{ display: none; }}
 .ion-section {{ margin-top: 26px; }}
 .ion-section .ion-panel {{ font-size: 1.05rem; padding: 9px 14px; }}
 

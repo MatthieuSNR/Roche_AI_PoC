@@ -1,16 +1,17 @@
 """
-Insights Lab: the new pages of the dashboard, reached from the second row of the top menu.
-They are being validated: the existing page (app.py) is left unchanged until a new page replaces a section.
-The sidebar filters (and the timeframe) of app.py apply here too. The analyses are in scripts/insights.py.
+Insights Lab: the analyses built on the tracking table and the journal entries of the comments.
+The sidebar filters (and the timeframe) of app.py apply everywhere. The analyses are in scripts/insights.py.
 
-  grouped-comments   Most frequent comments, near-identical wordings grouped (US24)
-  trends-all         Root cause trends on all snapshot rows + what changed between two weeks (US26)
+Sections of the main page (they replaced the first versions once validated):
+  frequent-comments  Most frequent comments, near-identical wordings grouped (US24)
+  trends             Root cause trends on all snapshot rows + what changed between two weeks (US26)
+Pages of the second row of the menu:
   cause-impact       Which root causes lead to which impact and material status
   weak-signals       Which first comments (phrases, vendor, root cause, status) announce an impact to come
 
-Written for planners, buyers and managers: plain-language insights and coloured charts first; how to read
-them in boxes that can be hidden ("Show explanations"); the statistics in a folded "Statistical details"
-panel for whoever wants the reasoning; a "?" on every indicator.
+Written for planners, buyers and managers: plain-language insights and coloured charts first. The settings
+and the "how to read" boxes are in a folded "Options" panel; the mechanics (why wordings were grouped, what
+changed between two weeks, statistical details) in folded panels opened on demand; a "?" on every indicator.
 """
 
 import os
@@ -25,12 +26,10 @@ import ui
 from tracking import TRACKING_PATH
 
 PAGES = [
-    ("grouped-comments", "Frequent Comments, Grouped"),
-    ("trends-all", "Root Cause Trends (all snapshots)"),
-    ("cause-impact", "Root Cause × Impact"),
+    ("cause-impact", "Impact by Root Cause"),
     ("weak-signals", "Weak Signals"),
 ]
-LAB_LABEL = "Insights Lab · new pages to validate"
+LAB_LABEL = "Deeper analyses"
 IMPACT_COLORS = {"Market": "#9B1C1C", "Production": "#E0443A", "Logistics": "#F5C518", "None (no impact)": "#2FA84F"}
 SIGNIFICANT = 0.05
 
@@ -94,21 +93,35 @@ def filter_tracking(tracking, selections, period=None):
 
 
 # ------------------------------------------------------------------ explanations
-def explanations_toggle():
-    st.session_state.setdefault("lab_explain", True)
-    st.toggle("Show explanations", key="lab_explain",
-              help="Boxes that explain how to read each chart and table. The statistical details stay in the "
-                   "folded panels at the bottom of each section.")
+_explain_key = "lab_explain"
+
+
+def options(explain_key):
+    """Folded 'Options' panel of a section, with its 'Show explanations' switch; returns the panel so that the
+    section adds its own settings to it (`with panel:`). One switch per section: two sections on one page."""
+    global _explain_key
+    _explain_key = explain_key
+    panel = st.expander("Options", expanded=False)
+    st.session_state.setdefault(explain_key, True)
+    panel.toggle("Show explanations", key=explain_key)
+    return panel
 
 
 def explain(text):
-    """A 'how to read' box, shown when 'Show explanations' is on."""
-    if st.session_state.get("lab_explain", True):
+    """A 'how to read' box, shown when 'Show explanations' of the current section is on."""
+    if st.session_state.get(_explain_key, True):
         st.info(text)
 
 
 def details(title="Statistical details (for analysts)"):
     return st.expander(title, expanded=False)
+
+
+def fold(title):
+    """A blue panel header that opens on click (arrow on the right): mechanics and details, folded by default."""
+    panel = st.expander(title, expanded=False)
+    panel.markdown('<span class="ion-fold"></span>', unsafe_allow_html=True)   # marker for the blue style (ui.py)
+    return panel
 
 
 def insights_box(lines):
@@ -154,23 +167,20 @@ def _stacked_bars(shares, counts, colors, title, xlabel, notes=None):
     ax.set_xlim(0, 100)
     ax.invert_yaxis()
     ax.set_xlabel(xlabel)
-    ax.set_title(title)
-    ax.legend(ncol=len(shares.columns), loc="upper center", bbox_to_anchor=(0.5, -0.06 - 0.6 / (len(shares) + 3)),
-              frameon=False, fontsize=8)
+    ax.set_title(title, pad=24)
+    ax.legend(ncol=len(shares.columns), loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False, fontsize=8,
+              borderaxespad=0.3)   # above the bars: never on the axis, whatever the number of rows
     ax.tick_params(axis="y", labelsize=8)
     ax.spines[["top", "right", "bottom"]].set_visible(False)
     plt.tight_layout()
     return fig
 
 
-# ------------------------------------------------------------------ page 1
-def page_grouped_comments(filtered_df, selection_name):
-    ui.section("grouped-comments", "Most Frequent Comments, Grouped — " + selection_name)
-    explanations_toggle()
-    explain("Same table as 'Most Frequent Comments', but comments that say the same thing in slightly different "
-            "words are counted as **one issue**, e.g. `PX13` and `px13 - No stockout detected`.\n\n"
-            "Each line is an issue; the table under it shows which wordings were grouped, and why.")
-    c1, c2, c3 = st.columns([0.8, 1.4, 1.4])
+# ------------------------------------------------------------------ main page: most frequent comments
+def frequent_comments_section(filtered_df, selection_name):
+    ui.section("frequent-comments", "Most Frequent Comments — " + selection_name)
+    with options("explain_frequent"):
+        c1, c2, c3 = st.columns([0.8, 1.4, 1.4])
     top_n = int(c1.selectbox("Select a view:", ["Top 10", "Top 20", "Top 50"], key="lab_top").split()[1])
     method_label = c2.selectbox("Group comments with a similar:", ["Wording (characters)", "Meaning (language model)"],
                                 key="lab_method",
@@ -182,6 +192,10 @@ def page_grouped_comments(filtered_df, selection_name):
                           help="Higher = stricter (fewer, more certain groups). Lower = more comments grouped. "
                                "Comments with different root causes are never grouped, except when only the case "
                                "or the punctuation differs.")
+    explain("Comments that say the same thing in slightly different words are counted as **one issue**, e.g. `PX13` "
+            "and `px13 - No stockout detected`. A comment with several dated entries counts each entry.\n\n"
+            "Each line is an issue; open 'Why were these wordings grouped?' under the table to see which wordings "
+            "were grouped, and why.")
     entries = ins.comment_entries(filtered_df)[["Entry", "Root_Cause", "MATERIAL_NUMBER", "VENDOR_NAME", "Days_Active"]]
     if entries.empty:
         st.info("No comments match the current filters.")
@@ -213,15 +227,15 @@ def page_grouped_comments(filtered_df, selection_name):
             "Root causes (entries)": st.column_config.TextColumn(width="large", help="Root causes entered with these "
                                                                                      "comments, with their count.")})
 
-    ui.panel_header("Why were these wordings grouped?")
-    choice = st.selectbox("Issue:", table["Comment"].tolist(), key="lab_group")
-    group_id = table.loc[table["Comment"] == choice, "Group"].iloc[0]
-    st.dataframe(variants[variants["Group"] == group_id][["Wording", "Occurrences", "Main_root_cause", "Reason"]]
-                 .rename(columns={"Main_root_cause": "Main root cause"}),
-                 use_container_width=True, hide_index=True,
-                 column_config={"Wording": st.column_config.TextColumn(width="large"),
-                                "Reason": st.column_config.TextColumn(width="large")})
-    with details("How the grouping works"):
+    with fold("Why were these wordings grouped?"):
+        choice = st.selectbox("Issue:", table["Comment"].tolist(), key="lab_group")
+        group_id = table.loc[table["Comment"] == choice, "Group"].iloc[0]
+        st.dataframe(variants[variants["Group"] == group_id][["Wording", "Occurrences", "Main_root_cause", "Reason"]]
+                     .rename(columns={"Main_root_cause": "Main root cause"}),
+                     use_container_width=True, hide_index=True,
+                     column_config={"Wording": st.column_config.TextColumn(width="large"),
+                                    "Reason": st.column_config.TextColumn(width="large")})
+        st.markdown("**How the grouping works**")
         st.markdown(
             "1. **Same text after normalisation**: case, punctuation and the spellings of *stock-out* and *pull-in* "
             "are ignored (`PX13` = `px13`), whatever the root cause.\n\n"
@@ -236,19 +250,26 @@ def page_grouped_comments(filtered_df, selection_name):
             "*pull-in* stay apart (0.20 with the language model). The groups are made on the English translation.")
 
 
-# ------------------------------------------------------------------ page 2
-def page_trends_all(tracking, selection_name):
-    ui.section("trends-all", "Root Cause Trends (all snapshots) — " + selection_name)
+# ------------------------------------------------------------------ main page: root cause trends
+def trends_section(df, selections, selection_name, period=None):
+    """The trends drawn from the tracking table, with the sidebar filters and the timeframe."""
+    tracking = load_tracking()
+    st.session_state["_comments_en"] = dict(zip(df["Comment"], df["Comment_EN"]))
+    page_trends(filter_tracking(tracking, selections, period) if tracking is not None else None, selection_name)
+
+
+def page_trends(tracking, selection_name):
+    ui.section("trends", "Root Cause Trends — " + selection_name)
     if tracking is None:
         return _missing_tracking()
-    explanations_toggle()
+    panel = options("explain_trends")
     explain("How many items (a material from a vendor) carried each root cause, week by week, over the timeframe "
             "chosen in the sidebar. Every snapshot row counts, also the ones without a comment.\n\n"
             "A rising line = a cause that concerns more and more items.")
     if tracking.empty:
         st.info("No data for the current filters and timeframe.")
         return
-    c1, c2 = st.columns([1, 3])
+    c1, c2 = panel.columns([1, 3])
     by = c1.radio("Group by:", ["Root cause", "Stakeholder"], key="lab_trend_by",
                   help="Stakeholder = who is responsible, from the prefix of the root cause (S = Supplier, "
                        "PL = Planning, P = Procurement, B = Buying...; legend of Johannes Höttler).")
@@ -283,7 +304,11 @@ def page_trends_all(tracking, selection_name):
                          column_config={"Change": st.column_config.NumberColumn(
                              help="Items in the last week minus items in the first week of the timeframe.")})
 
-    ui.panel_header("What changed between two weeks?")
+    with fold("What changed between two weeks?"):
+        _status_change(tracking)
+
+
+def _status_change(tracking):
     explain("Why are there more (or fewer) stock-outs this week? The items in the status at the end of each week, "
             "and the root causes of the items that **entered** or **left** it.\n\n"
             "Read the table from the top: the root causes with the largest net change explain the difference.")
@@ -320,16 +345,16 @@ def page_trends_all(tracking, selection_name):
 
 # ------------------------------------------------------------------ page 3
 def page_cause_impact(tracking, selection_name):
-    ui.section("cause-impact", "Root Cause × Impact — " + selection_name)
+    ui.section("cause-impact", "Impact by Root Cause — " + selection_name)
     if tracking is None:
         return _missing_tracking()
-    explanations_toggle()
+    panel = options("explain_impact")
     explain("**Which root causes lead to which impact?** For every item (a material from a vendor) of the timeframe: "
             "its root cause(s), the most severe impact planning communicated for it, and its material status.\n\n"
             "Impact levels, from the most severe: **Market** > **Production** > **Logistics** > **None** (planning "
             "entered that there is no impact). Items without any impact entered are **not communicated**: their "
             "impact is unknown, so they are left out of the impact chart.")
-    by = st.radio("Show by:", ["Root cause", "Stakeholder"], horizontal=True, key="lab_impact_by",
+    by = panel.radio("Show by:", ["Root cause", "Stakeholder"], horizontal=True, key="lab_impact_by",
                   help="Stakeholder = who is responsible, from the prefix of the root cause (S = Supplier, "
                        "PL = Planning, P = Procurement, B = Buying...).")
     data = tracking if by == "Root cause" else tracking.assign(
@@ -339,7 +364,7 @@ def page_cause_impact(tracking, selection_name):
     except ValueError:
         st.info("Not enough items with a communicated impact for the current filters and timeframe.")
         return
-    min_items = st.slider(f"Show the {by.lower()}s with at least ... items with a communicated impact:", 1, 30, 5,
+    min_items = panel.slider(f"Show the {by.lower()}s with at least ... items with a communicated impact:", 1, 30, 5,
                           key="lab_min_items", help="Small numbers give unstable percentages: 5 or more is a good minimum.")
     shown = per_cause[per_cause["Impact communicated"] >= min_items].sort_values("% severe", ascending=False)
     if shown.empty:
@@ -463,7 +488,7 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
     ui.section("weak-signals", "Weak Signals — " + selection_name)
     if tracking is None:
         return _missing_tracking()
-    explanations_toggle()
+    options("explain_signals")
     explain("**Can we see an impact coming?** For every item (a material from a vendor), we look at its **first "
             "comment** and its context at that moment (vendor, root cause, material status), and check whether a "
             "**Production or Market impact** was communicated **later**.\n\n"
@@ -661,11 +686,7 @@ def render(page, df, filtered_df, selections, selection_name, period=None):
     tracking = load_tracking()
     st.session_state["_comments_en"] = dict(zip(df["Comment"], df["Comment_EN"]))
     tracking_filtered = filter_tracking(tracking, selections, period) if tracking is not None else None
-    if page == "grouped-comments":
-        page_grouped_comments(filtered_df, selection_name)
-    elif page == "trends-all":
-        page_trends_all(tracking_filtered, selection_name)
-    elif page == "cause-impact":
+    if page == "cause-impact":
         page_cause_impact(tracking_filtered, selection_name)
     elif page == "weak-signals":
         page_weak_signals(tracking, tracking_filtered, st.session_state["_comments_en"], selection_name, period)
