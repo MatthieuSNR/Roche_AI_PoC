@@ -453,20 +453,43 @@ def _weak_signals(_tracking, _comments_en, version):
     return items, model
 
 
+# Colour of a bar = how many times more often than average an impact follows (the further, the warmer);
+# solid = unlikely to be chance (p < 0.05, ★), light = could be chance (often few items)
+LIFT_BANDS = [(1.0, "#2FA84F", "below average"), (1.5, "#F5C518", "up to 1.5× average"),
+              (2.5, "#F28C28", "1.5 to 2.5× average"), (float("inf"), "#E0443A", "more than 2.5× average")]
+
+
+def _lift_colour(lift):
+    return next(colour for limit, colour, _ in LIFT_BANDS if lift < limit)
+
+
 def _bar_vs_average(frame, label_column, value_column, average, title, highlight):
-    """Horizontal bars of a share, with the average as a dashed line; significant rows in red."""
+    """Horizontal bars of a share, with the average as a dashed line. Colour = times the average (LIFT_BANDS);
+    solid with ★ = significant (highlight), light = could be chance. A legend above the bars says so."""
+    from matplotlib.colors import to_rgba
+    from matplotlib.patches import Patch
     frame = frame.iloc[::-1]
-    fig, ax = plt.subplots(figsize=(11, 0.27 * len(frame) + 1.3))
+    significant = list(highlight)[::-1]
+    lifts = frame[value_column] / average if average else frame[value_column] * 0 + 1
+    fig, ax = plt.subplots(figsize=(11, 0.27 * len(frame) + 1.6))
     labels = [str(v) if len(str(v)) <= 45 else str(v)[:44] + "…" for v in frame[label_column]]
-    colors = ["#E0443A" if h else "#F28C28" for h in highlight[::-1]]
-    ax.barh(labels, frame[value_column], color=colors)
-    for i, (v, n) in enumerate(zip(frame[value_column], frame["Items"])):
-        ax.text(v + 1, i, f"{v:.0f}%  ({n} items)", va="center", fontsize=7.5)
+    colours = [to_rgba(_lift_colour(l), 1.0 if sig else 0.35) for l, sig in zip(lifts, significant)]
+    edges = [_lift_colour(l) for l in lifts]
+    ax.barh(labels, frame[value_column], color=colours, edgecolor=edges, linewidth=0.8)
+    for i, (v, n, sig) in enumerate(zip(frame[value_column], frame["Items"], significant)):
+        ax.text(v + 1, i, f"{v:.0f}%  ({n} items){'  ★' if sig else ''}", va="center", fontsize=7.5)
     ax.axvline(average, color="#374151", linestyle="--", linewidth=1)
-    ax.text(average, len(frame) - 0.3, f" average {average:.0f}%", fontsize=7.5, color="#374151", va="bottom")
+    ax.text(average, len(frame) - 0.45, f" average {average:.0f}%", fontsize=7.5, color="#374151", va="bottom")
+    ax.set_ylim(-0.6, len(frame) + 0.3)   # room for the 'average' label, under the legend
     ax.set_xlim(0, 105)
     ax.set_xlabel("% of the items followed by a Production / Market impact")
-    ax.set_title(title)
+    ax.set_title(title, pad=24)
+    used = {_lift_colour(l) for l in lifts}
+    handles = [Patch(color=c, label=name) for _, c, name in LIFT_BANDS if c in used]
+    handles += [Patch(facecolor="#9CA3AF", edgecolor="#9CA3AF", label="solid ★ = unlikely to be chance"),
+                Patch(facecolor=to_rgba("#9CA3AF", 0.35), edgecolor="#9CA3AF", label="light = could be chance")]
+    ax.legend(handles=handles, ncol=len(handles), loc="lower center", bbox_to_anchor=(0.5, 1.0), frameon=False,
+              fontsize=7.5, borderaxespad=0.3, handlelength=1.2, columnspacing=1.2)
     ax.tick_params(axis="y", labelsize=8)
     ax.spines[["top", "right"]].set_visible(False)
     fig.tight_layout()
@@ -553,7 +576,9 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
     # --- phrases
     ui.panel_header("Phrases in the first comment that announce an impact")
     explain("Phrases of 2 to 3 words (common words like 'the', 'for' are skipped, so `request pull-in` stands for "
-            "\"Request for pull-in\"). **Red** bars = unlikely to be chance; orange = a tendency to confirm. The "
+            "\"Request for pull-in\"). The **colour** says how many times more often than average an impact "
+            "follows (green = below average, yellow, orange, **red** = more than 2.5×); **solid bars with ★** are "
+            "unlikely to be chance, **light** bars could be chance (often few items). The "
             "dashed line is the average of all items.\n\n"
             "The table gives the context: the usual root cause and vendors of these comments, and an example.")
     if phrases.empty:
