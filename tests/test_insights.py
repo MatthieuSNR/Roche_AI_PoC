@@ -185,3 +185,11 @@ def test_lab_filters_vendor_material_and_impact():
     assert pick(Impact_Level=["Production"]) == [1]                       # all rows of the item kept
     assert pick(Impact_Level=["Not communicated"]) == [3]                 # nothing entered at all
     assert pick(Impact_Level=["None (no impact)"]) == [2]
+
+
+def test_merge_stakeholders_keeps_one_name_per_root_cause():
+    causes = pd.Series(["PL_Internal Errors", "PL_Internal Errors", "P_Internal Error", "S_Lack of Raw Material",
+                        "QM Lot", None])
+    merged = ins.merge_stakeholders(causes)
+    assert merged.tolist()[:5] == ["Internal Errors"] * 3 + ["Lack of Raw Material", "QM Lot"]
+    assert pd.isna(merged.iloc[5])

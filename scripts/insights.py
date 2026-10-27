@@ -48,6 +48,23 @@ def stakeholder(root_cause):
     return STAKEHOLDERS.get(prefix, "Other") if "_" in str(root_cause) else "Other"
 
 
+def cause_name(root_cause):
+    """The root cause without its stakeholder prefix: 'PL_Internal Errors' -> 'Internal Errors'."""
+    if pd.isna(root_cause):
+        return root_cause
+    prefix, _, rest = str(root_cause).partition("_")
+    return rest if rest and prefix in STAKEHOLDERS else str(root_cause)
+
+
+def merge_stakeholders(root_causes):
+    """Same root cause whatever the stakeholder: 'PL_Internal Errors', 'P_Internal Error', 'S_Internal Error' ->
+    one name (the most frequent spelling; singular / plural merged). Returns the series renamed."""
+    names = root_causes.map(cause_name)
+    key = names.map(lambda n: re.sub(r"s\b", "", n.lower()).strip() if pd.notna(n) else n)
+    label = names.groupby(key).agg(lambda s: s.value_counts().index[0])
+    return key.map(label)
+
+
 # ------------------------------------------------------------------ 1. grouping of similar comments
 def normalise(text):
     text = str(text).lower()

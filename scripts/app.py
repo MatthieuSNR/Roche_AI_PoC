@@ -17,6 +17,7 @@ from pseudonymise import PromptPseudonymiser
 from entries import ENTRY_SEPARATOR
 from stats_engine import compute_stats
 import ui
+import insights
 import insights_pages
 
 
@@ -387,19 +388,38 @@ with tab1:
 # ================= OVERVIEW (continued): Top Root Causes =================
 
 with tab2:
-    ui.panel_header("Top Root Causes")
-
-    top_n_causes = st.selectbox(
-        "Select a view:", options=["Top 5", "Top 10", "Top 20"], key="radio_top_causes",
-    )
+    # Options (small button on the right of the title): how many, and how to treat the stakeholders
+    # (prefix of the root cause: PL_ = Planning, S_ = Supplier...)
+    AS_ENTERED, MERGED, ONE_STAKEHOLDER = ("As entered", "Stakeholders merged", "One stakeholder")
+    with ui.section_with_options("top-root-causes", "Top Root Causes"):
+        top_n_causes = st.selectbox("Select a view:", options=["Top 5", "Top 10", "Top 20"], key="radio_top_causes")
+        cause_view = st.radio(
+            "Root causes:", [AS_ENTERED, MERGED, ONE_STAKEHOLDER], key="top_causes_view", horizontal=True,
+            help="As entered: one bar per root cause, with its stakeholder (PL_Internal Errors and "
+                 "P_Internal Error are two bars). Stakeholders merged: the same root cause counts once, whatever "
+                 "the stakeholder. One stakeholder: only the root causes of the stakeholder chosen below.")
+        stakeholders = filtered_df["Root_Cause"].dropna().map(insights.stakeholder).value_counts().index.tolist()
+        chosen_stakeholder = (st.selectbox("Stakeholder:", stakeholders or ["–"], key="top_causes_stakeholder")
+                              if cause_view == ONE_STAKEHOLDER else None)
     n_causes = int(top_n_causes.split(" ")[1])
+
+    def causes_of(frame):
+        """The root causes of `frame` in the chosen view (NaN = not counted)."""
+        if cause_view == MERGED:
+            return insights.merge_stakeholders(frame["Root_Cause"])
+        if cause_view == ONE_STAKEHOLDER:
+            return frame["Root_Cause"].where(frame["Root_Cause"].map(insights.stakeholder) == chosen_stakeholder)
+        return frame["Root_Cause"]
+
+    causes, all_causes = causes_of(filtered_df), causes_of(df)
+    view_label = {MERGED: " (stakeholders merged)", ONE_STAKEHOLDER: f" ({chosen_stakeholder})"}.get(cause_view, "")
 
     # 1. Comments without a root cause are counted apart (they are not a cause)
     total_comments = len(filtered_df)
     no_cause_count = int(filtered_df["Root_Cause"].isna().sum())
 
     # 2. Count root causes in the FILTERED data (respects all filters)
-    root_cause_counts = filtered_df["Root_Cause"].value_counts().head(n_causes)
+    root_cause_counts = causes.value_counts().head(n_causes)
 
     if root_cause_counts.empty:
         st.info("No root cause filled in for the current filters.")
@@ -422,7 +442,7 @@ with tab2:
         fig, ax = plt.subplots(figsize=(6, chart_height), facecolor="white")
         bars = ax.barh(root_cause_counts.index[::-1], root_cause_counts.values[::-1],
                     color=colors[::-1])
-        ax.set_title(f"Top {n_causes} Root Causes — {selection_name}")
+        ax.set_title(f"Top {len(root_cause_counts)} Root Causes{view_label} — {selection_name}")
         ax.set_xlabel("Number of Comments")
         ax.set_xlim(0, max_count * 1.22)  # room for the labels at the end of the bars
 
@@ -439,7 +459,7 @@ with tab2:
 
         # 5. Show the percentage share
         # Split: top N causes as individual slices, rest grouped as "Other"
-        all_cause_counts = filtered_df["Root_Cause"].value_counts()
+        all_cause_counts = causes.value_counts()
         top_counts = all_cause_counts.head(n_causes)
         other_count = all_cause_counts.iloc[n_causes:].sum()
 
@@ -466,7 +486,7 @@ with tab2:
             wedgeprops={"edgecolor": "white", "linewidth": 1},
             textprops={"fontsize": 8},
         )
-        fig_pie.suptitle(f"Root Cause Share — {selection_name}", fontsize=10, fontweight="bold",
+        fig_pie.suptitle(f"Root Cause Share{view_label} — {selection_name}", fontsize=10, fontweight="bold",
                          y=1 - 0.08 / chart_height)
         legend_labels = [l if len(l) <= 26 else l[:25] + "…" for l in pie_labels]
         fig_pie.legend(wedges, legend_labels, loc="lower center", bbox_to_anchor=(0.5, 0.01),
@@ -475,8 +495,10 @@ with tab2:
         with col_pie:
             ui.chart(fig_pie, "root_cause_share", tight=False)
             # Keep the caption only for the "Other" context
-            st.caption(f"Share among the comments WITH a root cause. "
-                       f"'Other' = all remaining root causes beyond the Top {n_causes} ({other_count} comments).")
+            st.caption(f"Share among the comments WITH a root cause"
+                       + (f" of {chosen_stakeholder}. " if cause_view == ONE_STAKEHOLDER else ". ")
+                       + (f"'Other' = all remaining root causes beyond the Top {n_causes} ({other_count} comments)."
+                          if other_count else ""))
 
         # 6. Compare with all comments: is a root cause over-represented in this selection?
         if selection_parts:
@@ -484,7 +506,7 @@ with tab2:
             compare_df = pd.DataFrame({
                 "Root Cause": root_cause_counts.index,
                 f"% of {selection_name} comments": (root_cause_counts.values / total_comments * 100).round(1),
-                "% of all comments": [round((df["Root_Cause"] == c).sum() / all_total * 100, 1)
+                "% of all comments": [round((all_causes == c).sum() / all_total * 100, 1)
                                       for c in root_cause_counts.index],
             })
             compare_df["Difference (pts)"] = (compare_df.iloc[:, 1] - compare_df.iloc[:, 2]).round(1)
