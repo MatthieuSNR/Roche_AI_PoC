@@ -50,6 +50,11 @@ CSS = f"""
 [data-testid="stDecoration"] {{ display: none; }}
 /* Streamlit's own toolbar (Deploy, menu) sits on the right of the blue bar, in white */
 header[data-testid="stHeader"] {{ background: transparent; height: {BAR_HEIGHT}px; z-index: 1000002; }}
+/* the transparent Streamlit header lets the clicks through to the blue bar (back to the Overview), except on
+   its own buttons (Deploy, menu, "Source file changed") */
+header[data-testid="stHeader"] {{ pointer-events: none; }}
+header[data-testid="stHeader"] [data-testid="stToolbar"], header[data-testid="stHeader"] [data-testid="stStatusWidget"],
+header[data-testid="stHeader"] button, header[data-testid="stHeader"] a, [data-testid="collapsedControl"] {{ pointer-events: auto; }}
 header[data-testid="stHeader"] [data-testid="stToolbar"] {{ top: 50%; transform: translateY(-50%); right: 12px; }}
 header[data-testid="stHeader"] button, header[data-testid="stHeader"] [data-testid="stToolbar"] * {{ color: #fff !important; }}
 .block-container {{ padding-top: {BAR_HEIGHT + 4}px; }}
@@ -118,6 +123,7 @@ html, .main, [data-testid="stAppViewContainer"] {{ scroll-behavior: smooth; }}
   background: {ION_BLUE}; color: #fff; padding: 0 200px 0 18px;
   display: flex; align-items: center; gap: 16px; box-shadow: 0 1px 4px rgba(0,0,0,.2);
 }}
+.ion-topbar {{ cursor: pointer; }}   /* a click brings back to the Overview */
 .ion-topbar .brand {{ display: flex; align-items: center; gap: 14px; font-size: 1.15rem; font-weight: 600; }}
 .ion-topbar .brand img {{ height: 30px; width: auto; display: block; }}
 .ion-topbar .hex {{
@@ -311,6 +317,12 @@ SCROLL_SPY_JS = """
         };
         go("smooth");
         setTimeout(() => go("instant"), 1200);   // "auto" would be smooth too (CSS scroll-behavior)
+      }, true);
+      // The blue bar at the top: back to the beginning of the dashboard (Overview)
+      document.addEventListener("click", e => {
+        if (!e.target.closest(".ion-topbar")) return;
+        const first = document.querySelector(".ion-nav a[data-target]");
+        if (first) first.click();
       }, true);
       // "Show explanations" of a section: a class on the page (kept across reruns), no rerun
       document.addEventListener("click", e => {
