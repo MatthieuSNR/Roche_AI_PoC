@@ -41,7 +41,7 @@ HELP = {
 }
 
 
-@st.cache_data
+@st.cache_resource   # one shared table, not copied at every use (read only: every step makes new frames)
 def load_tracking():
     if not os.path.exists(TRACKING_PATH):
         return None
@@ -167,7 +167,7 @@ def _stacked_bars(shares, counts, colors, title, xlabel, notes=None):
               borderaxespad=0.3)   # above the bars: never on the axis, whatever the number of rows
     ax.tick_params(axis="y", labelsize=8)
     ax.spines[["top", "right", "bottom"]].set_visible(False)
-    plt.tight_layout()
+    fig.tight_layout()
     return fig
 
 
@@ -245,6 +245,23 @@ def frequent_comments_section(filtered_df, selection_name):
 
 
 # ------------------------------------------------------------------ main page: root cause trends
+def _trend_chart(weekly, by, selection_name):
+    """One line per root cause (or stakeholder): items per week."""
+    fig, ax = plt.subplots(figsize=(12, 5.5))
+    colors = plt.cm.tab20.colors if len(weekly.columns) > 8 else None
+    for i, name in enumerate(weekly.columns):
+        ax.plot(weekly.index, weekly[name], marker="o", markersize=3, label=name,
+                color=colors[i % 20] if colors else None)
+    ax.set_xlim(weekly.index.min() - pd.Timedelta(days=3), weekly.index.max() + pd.Timedelta(days=3))
+    ax.set_ylim(bottom=0)
+    ax.set_title(f"Items per {by.lower()} and week — {selection_name}")
+    ax.set_ylabel("Items with this root cause during the week")
+    ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
+    plt.setp(ax.get_xticklabels(), rotation=45)
+    fig.tight_layout()
+    return fig
+
+
 def page_trends(tracking, selection_name):
     if tracking is None:
         ui.section("trends", "Root Cause Trends — " + selection_name)
@@ -268,19 +285,7 @@ def page_trends(tracking, selection_name):
         shown = c2.multiselect("Lines to display (default: the 6 largest):", ranking, default=ranking[:6],
                                key=f"lab_lines_{by}")
         if shown:
-            fig, ax = plt.subplots(figsize=(12, 5.5))
-            colors = plt.cm.tab20.colors if len(shown) > 8 else None
-            for i, name in enumerate(shown):
-                ax.plot(weekly.index, weekly[name], marker="o", markersize=3, label=name,
-                        color=colors[i % 20] if colors else None)
-            ax.set_xlim(weekly.index.min() - pd.Timedelta(days=3), weekly.index.max() + pd.Timedelta(days=3))
-            ax.set_ylim(bottom=0)
-            ax.set_title(f"Items per {by.lower()} and week — {selection_name}")
-            ax.set_ylabel("Items with this root cause during the week")
-            ax.legend(bbox_to_anchor=(1.02, 1), loc="upper left", fontsize=8)
-            plt.xticks(rotation=45)
-            plt.tight_layout()
-            ui.chart(fig, "root_cause_trends")
+            ui.chart(_trend_chart, weekly[shown], by, selection_name, name="root_cause_trends")
             first, last = weekly.index[0], weekly.index[-1]
             change = pd.DataFrame({f"Week of {first:%d.%m}": weekly.loc[first, shown],
                                    f"Week of {last:%d.%m}": weekly.loc[last, shown],
@@ -378,8 +383,8 @@ def page_cause_impact(tracking, selection_name):
     counts = table.loc[order, list(IMPACT_COLORS)]
     shares = counts.div(counts.sum(axis=1), axis=0) * 100
     notes = [f"{n} items{' ★' if p < SIGNIFICANT else ''}" for n, p in zip(counts.sum(axis=1), shown["p-value"])]
-    ui.chart(_stacked_bars(shares, counts, IMPACT_COLORS, f"Impact communicated per {by.lower()} (sorted by share of "
-                            "Production + Market)", "% of the items with a communicated impact", notes))
+    ui.chart(_stacked_bars, shares, counts, IMPACT_COLORS, f"Impact communicated per {by.lower()} (sorted by share of "
+             "Production + Market)", "% of the items with a communicated impact", notes)
     explain("Each bar = 100% of the items of a root cause whose impact was communicated. **Dark red and red** = "
             "severe impacts (Market, Production); **green** = no impact.\n\n"
             "The root causes at the **top** most often lead to a severe impact. **★** = the difference with the "
@@ -388,9 +393,8 @@ def page_cause_impact(tracking, selection_name):
     # --- chart 2: material status per root cause
     status = ins.root_cause_status(data).reindex(order).fillna(0)
     status_shares = status.div(status.sum(axis=1).replace(0, np.nan), axis=0).fillna(0) * 100
-    ui.chart(_stacked_bars(status_shares, status, ui.STATUS_COLORS, f"Worst material status per {by.lower()}",
-                            "% of the items with this root cause",
-                            [f"{int(n)} items" for n in status.sum(axis=1)]))
+    ui.chart(_stacked_bars, status_shares, status, ui.STATUS_COLORS, f"Worst material status per {by.lower()}",
+             "% of the items with this root cause", [f"{int(n)} items" for n in status.sum(axis=1)])
     explain("For the same root causes: the **worst material status** each item reached while the root cause was "
             "entered (ION colours: red = Actual Stock Out, orange = Potential, yellow = Below Safety, green = Good).")
 
@@ -428,8 +432,10 @@ def page_cause_impact(tracking, selection_name):
 
 # ------------------------------------------------------------------ page 4
 @st.cache_data(show_spinner="Looking for weak signals...")
-def _weak_signals(tracking, comments_en):
-    """All items with a comment and the prediction tool, trained on the whole history (it needs volume)."""
+def _weak_signals(_tracking, _comments_en, version):
+    """All items with a comment and the prediction tool, trained on the whole history (it needs volume).
+    The tables are not hashed at every rerun (143,000 rows): version = what identifies them."""
+    tracking, comments_en = _tracking, _comments_en
     items = ins.weak_signal_items(tracking, comments_en)
     model = ins.signal_model(items)
     if model:
@@ -453,7 +459,7 @@ def _bar_vs_average(frame, label_column, value_column, average, title, highlight
     ax.set_title(title)
     ax.tick_params(axis="y", labelsize=8)
     ax.spines[["top", "right"]].set_visible(False)
-    plt.tight_layout()
+    fig.tight_layout()
     return fig
 
 
@@ -482,7 +488,8 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
             "A weak signal = a phrase or a context after which such an impact comes more often than usual. "
             "Everything on this page follows the sidebar filters and the timeframe (items first commented in it); "
             "only the prediction tool is trained on the whole history, because it needs volume.")
-    all_items, model = _weak_signals(tracking, comments_en)
+    all_items, model = _weak_signals(tracking, comments_en,
+                                     (os.path.getmtime(TRACKING_PATH), hash(tuple(sorted(comments_en.items(), key=str)))))
     in_scope = set(map(tuple, tracking_filtered[ins.ITEM].drop_duplicates().to_numpy()))
     items = all_items[[(m, v) in in_scope for m, v in zip(all_items["MATERIAL_NUMBER"], all_items["VENDOR_ACCOUNT_NUMBER"])]]
     if period:
@@ -543,8 +550,8 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
         st.info("No phrase is followed by an impact clearly more often than average.")
     else:
         top = phrases.head(12)
-        ui.chart(_bar_vs_average(top, "Phrase", "% impact later", base, "Phrases of the first comment",
-                                  (top["p-value"] < SIGNIFICANT).tolist()))
+        ui.chart(_bar_vs_average, top, "Phrase", "% impact later", base, "Phrases of the first comment",
+                 (top["p-value"] < SIGNIFICANT).tolist())
         ui.picked_table("t_phrases", phrases.assign(Significant=np.where(phrases["p-value"] < SIGNIFICANT, "Yes", "No"))
                      [["Phrase", "Items", "Impact later", "% impact later", "× average", "Significant", "Main root cause",
                        "Main vendors", "Example", "p-value"]],
@@ -571,8 +578,8 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
                 st.info("Not enough items.")
                 continue
             top = frame.head(12)
-            ui.chart(_bar_vs_average(top, column, "% impact later", base, f"{names[column]} at the first comment",
-                                      (top["p-value"] < SIGNIFICANT).tolist()))
+            ui.chart(_bar_vs_average, top, column, "% impact later", base, f"{names[column]} at the first comment",
+                     (top["p-value"] < SIGNIFICANT).tolist())
             st.dataframe(frame.rename(columns={column: names[column]}).assign(
                 Significant=lambda d: np.where(d["p-value"] < SIGNIFICANT, "Yes", "No")),
                 use_container_width=True, hide_index=True, column_config={
@@ -598,17 +605,7 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
                      f"{scores.iloc[0]['Impact rate in the top 10%']:.0f}% in the top 10% (chart below).")
         insights_box(lines)
         all_base = scores.attrs["n_severe"] / scores.attrs["n_items"] * 100
-        fig, ax = plt.subplots(figsize=(10, 2.4))
-        ax.barh(scores["Model"][::-1], scores["Impact rate in the top 10%"][::-1], color=["#1A73E8", "#7B61FF", "#0B41CD"])
-        for i, v in enumerate(scores["Impact rate in the top 10%"][::-1]):
-            ax.text(v + 0.5, i, f"{v:.0f}%", va="center", fontsize=8)
-        ax.axvline(all_base, color="#374151", linestyle="--", linewidth=1)
-        ax.text(all_base, 2.45, f" average {all_base:.0f}%", fontsize=7.5, color="#374151")
-        ax.set_xlabel("All items: % of the 10% highest-ranked items that later had a Production / Market impact")
-        ax.tick_params(axis="y", labelsize=8)
-        ax.spines[["top", "right"]].set_visible(False)
-        plt.tight_layout()
-        ui.chart(fig, "weak_signals_model")
+        ui.chart(_model_chart, scores[["Model", "Impact rate in the top 10%"]], all_base, name="weak_signals_model")
         explain("Each bar is a version of the tool, using different information. The further a bar goes beyond the "
                 "dashed line (the average), the better that version spots the items that will get an impact.")
         with details():
@@ -635,6 +632,21 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
                          use_container_width=True, hide_index=True)
 
     _watch_list(items, tracking, model)
+
+
+def _model_chart(scores, all_base):
+    """Impact rate in the top 10% of each version of the tool, against the average."""
+    fig, ax = plt.subplots(figsize=(10, 2.4))
+    ax.barh(scores["Model"][::-1], scores["Impact rate in the top 10%"][::-1], color=["#1A73E8", "#7B61FF", "#0B41CD"])
+    for i, v in enumerate(scores["Impact rate in the top 10%"][::-1]):
+        ax.text(v + 0.5, i, f"{v:.0f}%", va="center", fontsize=8)
+    ax.axvline(all_base, color="#374151", linestyle="--", linewidth=1)
+    ax.text(all_base, 2.45, f" average {all_base:.0f}%", fontsize=7.5, color="#374151")
+    ax.set_xlabel("All items: % of the 10% highest-ranked items that later had a Production / Market impact")
+    ax.tick_params(axis="y", labelsize=8)
+    ax.spines[["top", "right"]].set_visible(False)
+    fig.tight_layout()
+    return fig
 
 
 def _watch_list(items, tracking, model):
@@ -668,12 +680,28 @@ def _watch_list(items, tracking, model):
                "communicated.")
 
 
+_FILTERED = {}   # (filters, timeframe) -> filtered tracking table: the sections of one rerun share it
+
+
+def filtered_tracking(selections, period):
+    """filter_tracking of the shared table, kept for the last filters used (3 sections and the Smart Analysis
+    ask for the same one)."""
+    tracking = load_tracking()
+    if tracking is None:
+        return None
+    key = repr((sorted((k, tuple(v)) for k, v in selections.items() if v), period))
+    if key not in _FILTERED:
+        if len(_FILTERED) >= 20:
+            _FILTERED.pop(next(iter(_FILTERED)))
+        _FILTERED[key] = filter_tracking(tracking, selections, period)
+    return _FILTERED[key]
+
+
 def _tracking(df, selections, period):
     """(whole tracking table, tracking table of the sidebar filters and timeframe); the English comments for
     the tables. (None, None) when the table was not built."""
-    tracking = load_tracking()
     st.session_state["_comments_en"] = dict(zip(df["Comment"], df["Comment_EN"]))
-    return tracking, filter_tracking(tracking, selections, period) if tracking is not None else None
+    return load_tracking(), filtered_tracking(selections, period)
 
 
 def trends_section(df, selections, selection_name, period=None):
@@ -739,7 +767,7 @@ def smart_context(df, filtered_df, selections, period=None, timeframe=""):
     tracking = load_tracking()
     if tracking is None:
         return facts
-    scope = filter_tracking(tracking, selections, period)
+    scope = filtered_tracking(selections, period)
 
     # 3. root cause -> impact (items, impact communicated only)
     try:

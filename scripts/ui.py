@@ -13,6 +13,7 @@ import os
 import re
 
 import matplotlib.pyplot as plt
+import numpy as np
 import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
@@ -77,7 +78,16 @@ section[data-testid="stSidebar"] button[data-testid="baseButton-header"]::before
   background: #fff; border: 1px solid #E1E5EB; border-radius: {RADIUS}; padding: 10px;
   box-shadow: 0 1px 2px rgba(0,0,0,.05); max-width: 100%; box-sizing: border-box;
 }}
-/* Charts drawn by ui.chart: the same card, with a small "PNG" download link under it */
+/* Sidebar filters: the chosen values (blue tags) show their whole name, on several lines if needed,
+   whatever the width of the sidebar */
+section[data-testid="stSidebar"] [data-baseweb="tag"] {{ height: auto; max-width: 100%; min-width: 0; }}
+section[data-testid="stSidebar"] [data-baseweb="tag"] span[title] {{
+  max-width: none; white-space: normal; overflow-wrap: anywhere; text-overflow: clip; overflow: visible;
+  line-height: 1.3; padding: 3px 0;
+}}
+section[data-testid="stSidebar"] [data-baseweb="select"] > div > div:first-child {{ min-width: 0; }}
+
+/* Charts drawn by ui.chart: a white card, with a small "PNG" download link under it */
 .ion-chart {{ margin-bottom: 6px; }}
 .ion-chart img {{
   display: block; width: 100%; background: #fff; border: 1px solid #E1E5EB; border-radius: {RADIUS}; padding: 10px;
@@ -434,20 +444,57 @@ def explain_box(section_id, text):
                 unsafe_allow_html=True)
 
 
-def chart(fig, name=None, tight=True):
-    """Draw a matplotlib figure as a white card, with a 'PNG' link under it that saves the picture (in the
-    browser: no rerun). name = file name (default: from the title of the chart)."""
-    import base64 as b64
+_PNG_CACHE = {}          # fingerprint of a chart -> (png, name); shared by all users, the oldest dropped
+_PNG_CACHE_SIZE = 300
+
+
+def _fingerprint(value):
+    """A stable text for the inputs of a chart (data frames hashed on their content)."""
+    if isinstance(value, (pd.DataFrame, pd.Series)):
+        content = int(pd.util.hash_pandas_object(value, index=True).sum())
+        names = tuple(value.columns) if isinstance(value, pd.DataFrame) else value.name
+        return f"{type(value).__name__}{value.shape}{names}{content}"
+    if isinstance(value, (list, tuple)):
+        return "[" + ",".join(_fingerprint(v) for v in value) + "]"
+    if isinstance(value, dict):
+        return "{" + ",".join(f"{k!r}:{_fingerprint(v)}" for k, v in sorted(value.items(), key=lambda kv: repr(kv[0]))) + "}"
+    if isinstance(value, np.ndarray):
+        return f"array{value.shape}{hash(value.tobytes())}"
+    return repr(value)
+
+
+def _png(fig, tight):
+    """The figure as a PNG, base64 (put directly in the page: no processing by Streamlit at every rerun)."""
     import io
-    if name is None:
-        title = (fig._suptitle.get_text() if fig._suptitle else "") or next(
-            (ax.get_title() for ax in fig.axes if ax.get_title()), "chart")
-        name = re.sub(r"[^A-Za-z0-9]+", "_", title.split(" — ")[0]).strip("_").lower() or "chart"
     buffer = io.BytesIO()
     fig.savefig(buffer, format="png", dpi=160, bbox_inches="tight" if tight else None, facecolor="white")
     plt.close(fig)
-    data = b64.b64encode(buffer.getvalue()).decode()
-    st.markdown(f'<div class="ion-chart"><img src="data:image/png;base64,{data}" alt="{html.escape(name)}">'
+    return base64.b64encode(buffer.getvalue()).decode()
+
+
+def _chart_name(fig):
+    title = (fig._suptitle.get_text() if fig._suptitle else "") or next(
+        (ax.get_title() for ax in fig.axes if ax.get_title()), "chart")
+    return re.sub(r"[^A-Za-z0-9]+", "_", title.split(" — ")[0]).strip("_").lower() or "chart"
+
+
+def chart(draw, *args, name=None, tight=True, **kwargs):
+    """Draw a chart as a white card, with a 'PNG' link under it that saves the picture (in the browser: no
+    rerun). draw(*args, **kwargs) returns a matplotlib figure; the picture is kept for the same inputs, so a
+    rerun of the dashboard (e.g. an option of another section) does not draw the unchanged charts again.
+    draw may also be a figure (drawn every time). name = file name (default: from the title)."""
+    if isinstance(draw, plt.Figure):   # drawn every time
+        png, name = _png(draw, tight), name or _chart_name(draw)
+    else:
+        key = getattr(draw, "__qualname__", repr(draw)) + _fingerprint((args, kwargs, tight))
+        if key not in _PNG_CACHE:
+            fig = draw(*args, **kwargs)
+            if len(_PNG_CACHE) >= _PNG_CACHE_SIZE:
+                _PNG_CACHE.pop(next(iter(_PNG_CACHE)))
+            _PNG_CACHE[key] = (_png(fig, tight), _chart_name(fig))
+        png, default_name = _PNG_CACHE[key]
+        name = name or default_name
+    st.markdown(f'<div class="ion-chart"><img src="data:image/png;base64,{png}" alt="{html.escape(name)}">'
                 f'<div class="dl"><a href="#" data-name="{html.escape(name)}">⬇ PNG</a></div></div>',
                 unsafe_allow_html=True)
 

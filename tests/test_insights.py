@@ -193,3 +193,24 @@ def test_merge_stakeholders_keeps_one_name_per_root_cause():
     merged = ins.merge_stakeholders(causes)
     assert merged.tolist()[:5] == ["Internal Errors"] * 3 + ["Lack of Raw Material", "QM Lot"]
     assert pd.isna(merged.iloc[5])
+
+
+def test_chart_is_drawn_once_for_the_same_data():
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    import ui
+    calls = []
+
+    def draw(frame, title):
+        calls.append(title)
+        fig, ax = plt.subplots()
+        ax.bar(frame.index, frame["n"])
+        ax.set_title(title)
+        return fig
+
+    frame = pd.DataFrame({"n": [3, 1]}, index=["a", "b"])
+    ui.chart(draw, frame, "Test chart")
+    ui.chart(draw, frame.copy(), "Test chart")                      # same content: picture reused
+    ui.chart(draw, frame.assign(n=[3, 2]), "Test chart")            # other data: drawn again
+    assert calls == ["Test chart", "Test chart"]
