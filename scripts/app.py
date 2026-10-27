@@ -109,21 +109,13 @@ SECTIONS = [
     ("frequent-comments", "Most Frequent Comments"),
     ("trends", "Root Cause Trends"),
     ("key-statistics", "Key Statistics"),
-    ("ai-summary", "Smart Analysis"),
+    ("cause-impact", "Impact by Root Cause"),
+    ("weak-signals", "Weak Signals"),
+    ("ai-summary", "Smart Analysis"),   # always the last one
 ]
 SECTION_TITLES = dict(SECTIONS)
-# Pages (scripts/insights_pages.py): at the end of the same menu row; they select a hidden radio.
-# Changing page is a rerun, not a reload: filters and password are kept. The page is also put in the
-# URL (?page=...), so that a reload or a shared link opens the same page.
-LAB_PAGES = [("", "Main page")] + insights_pages.PAGES
-if "lab_page" not in st.session_state:
-    st.session_state["lab_page"] = st.query_params.get("page", "") if st.query_params.get("page", "") in dict(LAB_PAGES) else ""
-with st.container():
-    ui.top_bar("Material Availability", "Insights Lab", SECTIONS, insights_pages.PAGES, st.session_state["lab_page"])
-    PAGE = ui.lab_menu(LAB_PAGES, insights_pages.LAB_LABEL, key="lab_page")
-if PAGE:
-    st.query_params["page"] = PAGE
-elif "page" in st.query_params:
+ui.top_bar("Material Availability", "Insights Lab", SECTIONS)
+if "page" in st.query_params:   # links of the former separate pages (?page=...): the dashboard is one page now
     del st.query_params["page"]
 ui.scroll_spy()  # menu entry of the section on screen in blue
 
@@ -329,11 +321,6 @@ LAB_SELECTIONS = {"MRP_CONTROLLER": selected_mrp, "PURCHASING_GROUP": selected_p
                   "VENDOR_LABEL": selected_vendor_label, "MATERIAL_LABEL": selected_material_label,
                   "Root_Cause": selected_root_cause, "Impact_Level": selected_impact}
 
-# A page of the Insights Lab: drawn with the same filters, then nothing else of the main page
-if PAGE:
-    insights_pages.render(PAGE, df, filtered_df, LAB_SELECTIONS, selection_name, PERIOD)
-    st.stop()
-
 # Compute all statistics ONCE (used by all sections and the AI Summary)
 stats = compute_stats(filtered_df, df)
 
@@ -361,7 +348,7 @@ ui.status_definitions()
 
 # --- Sections: all analyses follow each other on one page (menu at the top to jump) ---
 # (Top Root Causes, tab2, is part of the Overview: its container comes first)
-tab2, tab1, tab3, tab5, tab6, tab7 = [st.container() for _ in range(6)]
+tab2, tab1, tab3, tab5, tab6, tab_impact, tab_signals, tab7 = [st.container() for _ in range(8)]
 
 
 
@@ -739,6 +726,14 @@ def render_ai_summary(mode: str):
             st.caption("Note: analysis generated with different filters.")
         ui.ai_result(saved[1], f"{saved[2]} · based on {saved[3]} comments · generated {saved[4]}"
                                + ("" if cloud else f" with {saved[5]} · figures computed by pandas"))
+
+
+# ================= Impact by Root Cause, Weak Signals (scripts/insights_pages.py) =================
+with tab_impact:
+    insights_pages.impact_section(df, LAB_SELECTIONS, selection_name, PERIOD)
+
+with tab_signals:
+    insights_pages.weak_signals_section(df, LAB_SELECTIONS, selection_name, PERIOD)
 
 
 with tab7:

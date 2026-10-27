@@ -103,18 +103,11 @@ div[data-testid="stVerticalBlock"] > div:has(.ion-nav) {{ position: sticky; top:
 }}
 .ion-nav a {{
   color: #1F2937 !important; text-decoration: none !important; font-size: .84rem; padding: 6px 8px;
-  border-radius: {RADIUS}; white-space: nowrap;
+  border-radius: {RADIUS}; white-space: nowrap; flex: 1 1 auto; text-align: center;   /* full width of the menu */
 }}
 .ion-nav a:hover {{ background: #E8F0FE; }}
 .ion-nav a.active {{ background: {ION_BLUE}; color: #fff !important; }}
 .emo {{ margin-right: 6px; }}
-/* Pages (Impact by Root Cause, Weak Signals): links of the same menu row, separated from the sections. They
-   select a Streamlit radio that stays hidden (a rerun, not a page load: filters and password kept). */
-.ion-nav .sep {{ width: 1px; background: #D6DCE5; margin: 4px 3px; }}
-div[data-testid="element-container"]:has([role="radiogroup"][aria-label="Pages"]),
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) div[data-testid="element-container"]:has([role="radiogroup"]) {{
-  display: none;
-}}
 .ion-anchor {{ scroll-margin-top: {BAR_HEIGHT + 70}px; height: 0; }}
 /* the invisible scroll-spy iframe takes no space */
 div[data-testid="element-container"]:has( iframe[height="0"]) {{ display: none; }}
@@ -135,6 +128,25 @@ div[data-testid="element-container"]:has( iframe[height="0"]) {{ display: none; 
 [data-testid="stMarkdownContainer"]:has(.ion-fold) {{ display: none; }}
 .ion-section {{ margin-top: 26px; }}
 .ion-section .ion-panel {{ font-size: 1.05rem; padding: 9px 14px; }}
+/* Section with options: a small "Options" button on the right of its blue title (section_with_options) */
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-section.has-options) {{
+  position: relative; gap: 0;
+}}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-section.has-options)
+  > div[data-testid="stPopover"] {{
+  position: absolute; top: 31px; right: 8px; width: auto !important; z-index: 5;
+}}
+.ion-section.has-options .ion-panel {{ padding-right: 120px; }}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-section.has-options)
+  [data-testid="stPopover"] button {{
+  min-height: 0; padding: 2px 10px; background: rgba(255,255,255,.15); border: 1px solid rgba(255,255,255,.6);
+  color: #fff;
+}}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-section.has-options)
+  [data-testid="stPopover"] button p {{ font-size: .8rem; color: #fff; }}
+div[data-baseweb="popover"]:has(.section-options) {{ z-index: 1000005 !important; }}
+div[data-testid="stPopoverBody"]:has(.section-options) {{ width: 640px; max-width: 92vw; }}
+.section-options {{ display: none; }}
 
 .ion-tiles {{ display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin: 4px 0 6px 0; }}
 .ion-tile {{
@@ -199,10 +211,9 @@ def _label(text):
     return html.escape(text)
 
 
-def top_bar(title, subtitle, sections, pages=(), current_page="", tag="AI PoC"):
-    """Blue title bar + navigation menu, one row. sections = [(anchor_id, label)]: clicking a label scrolls down
-    to that section of the main page; pages = [(page_id, label)]: the other pages, drawn instead of the main page
-    (they select the hidden radio of lab_menu). The menu stays visible at the top of the page."""
+def top_bar(title, subtitle, sections, tag="AI PoC"):
+    """Blue title bar + navigation menu, one row over the full width. sections = [(anchor_id, label)]: clicking a
+    label scrolls to that section, its blue title just under the menu; the menu stays visible at the top."""
     st.markdown(
         f'<div class="ion-topbar"><div class="brand">{_logo_html()}'
         f'<span>{html.escape(title)}</span><span class="sub">{html.escape(subtitle)}</span>'
@@ -210,20 +221,7 @@ def top_bar(title, subtitle, sections, pages=(), current_page="", tag="AI PoC"):
         unsafe_allow_html=True,
     )
     links = "".join(f'<a href="#{a}" target="_self" data-target="{a}">{_label(label)}</a>' for a, label in sections)
-    if pages:
-        links += '<span class="sep"></span>' + "".join(
-            f'<a href="?page={p}" target="_self" data-page="{p}" class="page{" active" if p == current_page else ""}">'
-            f'{_label(label)}</a>' for p, label in pages)
     st.markdown(f'<div class="ion-nav-wrap"><div class="ion-nav">{links}</div></div>', unsafe_allow_html=True)
-
-
-def lab_menu(pages, label, key):
-    """The page shown, as a hidden radio: the page links of the menu (top_bar) select it. Changing page is a
-    Streamlit rerun, not a page load: the filters, the password and the session are kept.
-    pages = [(page_id, label)], the first one being the main page. Returns the selected page_id."""
-    names = dict(pages)
-    return st.radio(label, [p for p, _ in pages], format_func=names.get, key=key, horizontal=True,
-                    label_visibility="collapsed")
 
 
 SCROLL_SPY_JS = """
@@ -265,28 +263,22 @@ SCROLL_SPY_JS = """
         if (t && t.scrollHeight > t.clientHeight) scroller = t;
         if (!ticking) { ticking = true; requestAnimationFrame(update); }
       }
-      // On a new page, the sections of the main page do not exist: select "Main page" in the second
-      // row (a Streamlit rerun, no reload), then scroll to the section once it is drawn.
-      // A page link: select the page in the hidden radio (same label)
-      document.addEventListener("click", e => {
-        const a = e.target.closest(".ion-nav a[data-page]");
-        if (!a) return;
-        e.preventDefault();
-        const label = [...document.querySelectorAll('[role="radiogroup"] label')]
-          .find(l => l.innerText.trim() === a.innerText.trim());
-        if (label) { label.click(); window.scrollTo({top: 0}); }
-      }, true);
+      // A menu entry: its section's blue title lands just under the menu (measured, the menu may wrap);
+      // corrected once more after the charts above it have finished drawing.
       document.addEventListener("click", e => {
         const a = e.target.closest(".ion-nav a[data-target]");
-        if (!a || document.getElementById(a.dataset.target)) return;
+        const anchor = a && document.getElementById(a.dataset.target);
+        const el = anchor && (anchor.nextElementSibling || anchor);   // the blue title
+        if (!el) return;
         e.preventDefault();
-        const main = document.querySelector('[role="radiogroup"] label');
-        if (main) main.click();
-        let tries = 0;
-        const timer = setInterval(() => {
-          const el = document.getElementById(a.dataset.target);
-          if (el || ++tries > 40) { clearInterval(timer); if (el) el.scrollIntoView({behavior: "smooth"}); }
-        }, 250);
+        const go = (behavior) => {
+          const nav = document.querySelector(".ion-nav");
+          // the menu sticks under the blue bar: bar height + menu height (it may wrap on two lines)
+          el.style.scrollMarginTop = (__BAR__ + (nav ? nav.offsetHeight : 40) + 8) + "px";
+          el.scrollIntoView({behavior: behavior, block: "start"});
+        };
+        go("smooth");
+        setTimeout(() => go("auto"), 900);
       }, true);
       document.addEventListener("scroll", request, true);
       window.addEventListener("resize", request);
@@ -301,16 +293,30 @@ SCROLL_SPY_JS = """
 
 def scroll_spy():
     """Invisible helper: colours in blue the menu entry of the section on screen."""
-    components.html(SCROLL_SPY_JS.replace("__OFFSET__", str(BAR_HEIGHT + 90)), height=0)
+    components.html(SCROLL_SPY_JS.replace("__OFFSET__", str(BAR_HEIGHT + 90)).replace("__BAR__", str(BAR_HEIGHT)),
+                    height=0)
 
 
-def section(anchor_id, title):
-    """Start of a page section: anchor for the menu + blue header."""
+def section(anchor_id, title, options=False):
+    """Start of a page section: anchor for the menu + blue header. options=True: draws in the current container
+    a small 'Options' button on the right of the header and returns its panel (see section_with_options)."""
+    extra = " has-options" if options else ""
     st.markdown(
-        f'<div class="ion-section"><div id="{anchor_id}" class="ion-anchor"></div>'
+        f'<div class="ion-section{extra}"><div id="{anchor_id}" class="ion-anchor"></div>'
         f'<div class="ion-panel">{_label(title)}</div></div>',
         unsafe_allow_html=True,
     )
+    if options:
+        panel = st.popover("Options")
+        panel.markdown('<div class="section-options"></div>', unsafe_allow_html=True)
+        return panel
+
+
+def section_with_options(anchor_id, title):
+    """Blue section header with a small 'Options' button on its right; returns the panel of the button
+    (settings of the section, 'Show explanations'). Header and button share a container (for the CSS)."""
+    with st.container():
+        return section(anchor_id, title, options=True)
 
 
 def panel_header(title):

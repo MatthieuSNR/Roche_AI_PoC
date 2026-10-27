@@ -2,10 +2,9 @@
 Insights Lab: the analyses built on the tracking table and the journal entries of the comments.
 The sidebar filters (and the timeframe) of app.py apply everywhere. The analyses are in scripts/insights.py.
 
-Sections of the main page (they replaced the first versions once validated):
+Sections of the dashboard (one page; the first two replaced the first versions once validated):
   frequent-comments  Most frequent comments, near-identical wordings grouped (US24)
   trends             Root cause trends on all snapshot rows + what changed between two weeks (US26)
-Pages (links at the end of the menu):
   cause-impact       Which root causes lead to which impact and material status
   weak-signals       Which first comments (phrases, vendor, root cause, status) announce an impact to come
 
@@ -25,11 +24,6 @@ import insights as ins
 import ui
 from tracking import TRACKING_PATH
 
-PAGES = [
-    ("cause-impact", "Impact by Root Cause"),
-    ("weak-signals", "Weak Signals"),
-]
-LAB_LABEL = "Pages"
 IMPACT_COLORS = {"Market": "#9B1C1C", "Production": "#E0443A", "Logistics": "#F5C518", "None (no impact)": "#2FA84F"}
 SIGNIFICANT = 0.05
 
@@ -96,20 +90,21 @@ def filter_tracking(tracking, selections, period=None):
 _explain_key = "lab_explain"
 
 
-def options(explain_key):
-    """Folded 'Options' panel of a section, with its 'Show explanations' switch; returns the panel so that the
-    section adds its own settings to it (`with panel:`). One switch per section: two sections on one page."""
+def options(anchor_id, title, explain_key):
+    """Blue header of a section with a small 'Options' button on its right; the button opens the settings of
+    the section and its 'Show explanations' switch (off by default). Returns the panel so that the section adds
+    its own settings to it (`with panel:`). One switch per section."""
     global _explain_key
     _explain_key = explain_key
-    panel = st.expander("Options", expanded=False)
-    st.session_state.setdefault(explain_key, True)
-    panel.toggle("Show explanations", key=explain_key)
+    panel = ui.section_with_options(anchor_id, title)
+    st.session_state.setdefault(explain_key, False)
+    panel.toggle("Show explanations", key=explain_key, help="Boxes that explain how to read the charts and tables.")
     return panel
 
 
 def explain(text):
     """A 'how to read' box, shown when 'Show explanations' of the current section is on."""
-    if st.session_state.get(_explain_key, True):
+    if st.session_state.get(_explain_key, False):
         st.info(text)
 
 
@@ -178,8 +173,7 @@ def _stacked_bars(shares, counts, colors, title, xlabel, notes=None):
 
 # ------------------------------------------------------------------ main page: most frequent comments
 def frequent_comments_section(filtered_df, selection_name):
-    ui.section("frequent-comments", "Most Frequent Comments — " + selection_name)
-    with options("explain_frequent"):
+    with options("frequent-comments", "Most Frequent Comments — " + selection_name, "explain_frequent"):
         c1, c2, c3 = st.columns([0.8, 1.4, 1.4])
     top_n = int(c1.selectbox("Select a view:", ["Top 10", "Top 20", "Top 50"], key="lab_top").split()[1])
     method_label = c2.selectbox("Group comments with a similar:", ["Wording (characters)", "Meaning (language model)"],
@@ -251,18 +245,11 @@ def frequent_comments_section(filtered_df, selection_name):
 
 
 # ------------------------------------------------------------------ main page: root cause trends
-def trends_section(df, selections, selection_name, period=None):
-    """The trends drawn from the tracking table, with the sidebar filters and the timeframe."""
-    tracking = load_tracking()
-    st.session_state["_comments_en"] = dict(zip(df["Comment"], df["Comment_EN"]))
-    page_trends(filter_tracking(tracking, selections, period) if tracking is not None else None, selection_name)
-
-
 def page_trends(tracking, selection_name):
-    ui.section("trends", "Root Cause Trends — " + selection_name)
     if tracking is None:
+        ui.section("trends", "Root Cause Trends — " + selection_name)
         return _missing_tracking()
-    panel = options("explain_trends")
+    panel = options("trends", "Root Cause Trends — " + selection_name, "explain_trends")
     explain("How many items (a material from a vendor) carried each root cause, week by week, over the timeframe "
             "chosen in the sidebar. Every snapshot row counts, also the ones without a comment.\n\n"
             "A rising line = a cause that concerns more and more items.")
@@ -345,10 +332,10 @@ def _status_change(tracking):
 
 # ------------------------------------------------------------------ page 3
 def page_cause_impact(tracking, selection_name):
-    ui.section("cause-impact", "Impact by Root Cause — " + selection_name)
     if tracking is None:
+        ui.section("cause-impact", "Impact by Root Cause — " + selection_name)
         return _missing_tracking()
-    panel = options("explain_impact")
+    panel = options("cause-impact", "Impact by Root Cause — " + selection_name, "explain_impact")
     explain("**Which root causes lead to which impact?** For every item (a material from a vendor) of the timeframe: "
             "its root cause(s), the most severe impact planning communicated for it, and its material status.\n\n"
             "Impact levels, from the most severe: **Market** > **Production** > **Logistics** > **None** (planning "
@@ -485,10 +472,10 @@ def _top_share(items, share=0.1):
 
 
 def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, period=None):
-    ui.section("weak-signals", "Weak Signals — " + selection_name)
     if tracking is None:
+        ui.section("weak-signals", "Weak Signals — " + selection_name)
         return _missing_tracking()
-    options("explain_signals")
+    options("weak-signals", "Weak Signals — " + selection_name, "explain_signals")
     explain("**Can we see an impact coming?** For every item (a material from a vendor), we look at its **first "
             "comment** and its context at that moment (vendor, root cause, material status), and check whether a "
             "**Production or Market impact** was communicated **later**.\n\n"
@@ -681,15 +668,25 @@ def _watch_list(items, tracking, model):
                "communicated.")
 
 
-def render(page, df, filtered_df, selections, selection_name, period=None):
-    """Draw the Insights Lab page `page` (an id of PAGES). period = (start, end) of the sidebar timeframe or None."""
+def _tracking(df, selections, period):
+    """(whole tracking table, tracking table of the sidebar filters and timeframe); the English comments for
+    the tables. (None, None) when the table was not built."""
     tracking = load_tracking()
     st.session_state["_comments_en"] = dict(zip(df["Comment"], df["Comment_EN"]))
-    tracking_filtered = filter_tracking(tracking, selections, period) if tracking is not None else None
-    if page == "cause-impact":
-        page_cause_impact(tracking_filtered, selection_name)
-    elif page == "weak-signals":
-        page_weak_signals(tracking, tracking_filtered, st.session_state["_comments_en"], selection_name, period)
+    return tracking, filter_tracking(tracking, selections, period) if tracking is not None else None
+
+
+def trends_section(df, selections, selection_name, period=None):
+    page_trends(_tracking(df, selections, period)[1], selection_name)
+
+
+def impact_section(df, selections, selection_name, period=None):
+    page_cause_impact(_tracking(df, selections, period)[1], selection_name)
+
+
+def weak_signals_section(df, selections, selection_name, period=None):
+    tracking, tracking_filtered = _tracking(df, selections, period)
+    page_weak_signals(tracking, tracking_filtered, st.session_state["_comments_en"], selection_name, period)
 
 
 # ------------------------------------------------------------------ context for the Smart Analysis (LLM)

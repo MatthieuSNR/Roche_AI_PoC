@@ -35,10 +35,10 @@ Roche_AI_PoC/
 │   ├── app.py                     # Streamlit dashboard (one scrolling page, password page when shared)
 │   ├── ui.py                      # Layout: ION-like look, top menu, loading screen, result card
 │   ├── stats_engine.py            # All statistics (pandas), used by the dashboard and the LLM
-│   │   # --- Insights Lab (main page sections + pages at the end of the menu)
+│   │   # --- Insights Lab (sections of the dashboard)
 │   ├── tracking.py                # Builds data/item_tracking.csv from all snapshot rows
 │   ├── insights.py                # Grouping of similar comments, trends, root cause x impact, weak signals
-│   ├── insights_pages.py          # Two main page sections + two pages (Streamlit)
+│   ├── insights_pages.py          # Four sections of the dashboard (Streamlit)
 │   ├── llm_summary.py             # Smart Analysis: Mistral API (cloud) or LM Studio (local backup)
 │   ├── config.py                  # Reads the keys from .env
 │   │   # --- Notebooks: run each step and check its result
@@ -70,7 +70,7 @@ Roche_AI_PoC/
 ### **Key Notes:**
 - **Data flow**: `Snapshot_2026/` → `data_cleaning.py` (steps 1-6, with `entries.py`, `abbreviations.py` + `lexicon/abbreviations.csv`) → `cleaned_comments.csv` → `translation.py` (step 7, with `pseudonymise.py`, `glossary.py`, the cache) → `Comment_EN` → `stats_engine.py` → `app.py` → `llm_summary.py` (Smart Analysis).
 - **One function per cleaning step**, one notebook cell per step: the result of every step can be checked on its own. The notebooks call the functions of the scripts, they do not duplicate code.
-- **Insights Lab**: `Snapshot_2026/` → `tracking.py` → `item_tracking.csv` → `insights.py` → `insights_pages.py`, drawn by `app.py`: *Most Frequent Comments* and *Root Cause Trends* in the main page (validated 27.10), *Impact by Root Cause* and *Weak Signals* when the URL has `?page=...`.
+- **Insights Lab**: `Snapshot_2026/` → `tracking.py` → `item_tracking.csv` → `insights.py` → `insights_pages.py`, drawn by `app.py`: *Most Frequent Comments* and *Root Cause Trends* in the main page (validated 27.10), *Impact by Root Cause* and *Weak Signals* sections of the same page (27.10).
 - **`stats_engine.py` is the single source of figures**: the dashboard displays them and the LLM only receives them, so the LLM never computes anything.
 - **`lexicon/` vs `data/interim/`**: `lexicon/` holds the reference tables, versioned and free of real comments; `data/interim/` holds files generated from the confidential data, never pushed.
 - **`scripts/` is flat on purpose**: a modular `src/` package was tried and set aside (history of the repository); a flat folder lets the notebooks import the modules without installation.
