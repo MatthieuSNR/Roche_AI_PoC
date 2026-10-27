@@ -33,6 +33,8 @@ SEVERE_IMPACTS = ["Market", "Production"]
 NOT_COMMUNICATED = "Not communicated"   # no impact entered: unknown, NOT "no impact"
 IMPACT_COLUMNS = ["Market", "Production", "Logistics", "None (no impact)", NOT_COMMUNICATED]
 MAX_EXTRA_WORDS = 3
+# Words that turn the next word into its opposite: "critical" / "non-critical" are never grouped
+NEGATIONS = {"no", "not", "non", "without", "never", "cannot", "unable", "isn", "aren", "don", "doesn", "won"}
 # Stakeholder responsible for a root cause = prefix of its name (legend from Johannes Höttler, 21.10)
 STAKEHOLDERS = {"S": "Supplier", "B": "Buying", "P": "Procurement", "I": "Import/Export", "M": "Material Management",
                 "PE": "PE", "PL": "Planning", "PR": "Production", "C": "Complaint Center", "TSM": "TSM", "E": "External"}
@@ -53,6 +55,24 @@ def normalise(text):
     text = re.sub(r"pull[\s-]?ins?", "pullin", text)
     text = re.sub(r"[^\w\s]", " ", text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+def polarity(norm):
+    """(negated words, plain words) of a normalised text: 'stock coverage non critical' ->
+    ({'critical'}, {'stock', 'coverage'}). The word right after a negation is negated."""
+    negated, plain, after_negation = set(), set(), False
+    for word in norm.split():
+        if word in NEGATIONS:
+            after_negation = True
+            continue
+        (negated if after_negation else plain).add(word)
+        after_negation = False
+    return negated, plain
+
+
+def opposite(a, b):
+    """True when a word is negated in one text and affirmed in the other (opposite meanings)."""
+    return bool(a[0] & b[1]) or bool(b[0] & a[1])
 
 
 def comment_entries(df, which="all", text_column="Comment_EN"):
@@ -153,6 +173,7 @@ def group_comments(entries, threshold=None, method="chars", embeddings=None):
     words = [set(n.split()) for n in variants["_norm"]]
     n_words = np.array([len(w) for w in words])
     causes = variants["Main_root_cause"].to_numpy()
+    polarities = [polarity(n) for n in variants["_norm"]]
     sim = similarity_matrix()          # all pairs at once (1,500 wordings: about 2 million similarities)
     anchors, group_of, reason = [], [], []
     for i in range(len(variants)):
@@ -163,7 +184,8 @@ def group_comments(entries, threshold=None, method="chars", embeddings=None):
             same = causes[a] == causes[i]
             # 1. contained in the other wording (at most MAX_EXTRA_WORDS more words), same root cause
             close = a[same & (np.abs(n_words[a] - n_words[i]) <= MAX_EXTRA_WORDS)]
-            contained = [c for c in close if words[c] <= words[i] or words[i] <= words[c]]
+            contained = [c for c in close if (words[c] <= words[i] or words[i] <= words[c])
+                         and not opposite(polarities[i], polarities[c])]
             if contained:
                 best = max(contained, key=lambda c: sim[i, c])
                 best_reason = "contained in the other wording, same root cause"
@@ -171,8 +193,10 @@ def group_comments(entries, threshold=None, method="chars", embeddings=None):
                 # 2. similar wording / meaning, same root cause (or none entered): the most similar anchor
                 no_cause = (causes[a] == NO_ROOT_CAUSE) | (causes[i] == NO_ROOT_CAUSE)
                 ok = (same | no_cause) & (scores >= threshold)
-                if ok.any():
-                    j = int(np.argmax(np.where(ok, scores, -1.0)))
+                # the most similar one that does not say the opposite
+                j = next((j for j in np.argsort(-np.where(ok, scores, -1.0))[:int(ok.sum())]
+                          if not opposite(polarities[i], polarities[a[j]])), None)
+                if j is not None:
                     best = int(a[j])
                     best_reason = f"{kind} ({scores[j]:.2f}), " + ("same root cause" if same[j] else "no root cause entered")
         if best is None:

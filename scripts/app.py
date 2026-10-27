@@ -106,21 +106,20 @@ for col in ["Snapshot_Date", "First_Seen", "Last_Seen"]:
 SECTIONS = [
     ("overview", "Overview"),
     ("filtered-comments", "Filtered Comments"),
-    ("top-root-causes", "Top Root Causes"),
     ("frequent-comments", "Most Frequent Comments"),
     ("trends", "Root Cause Trends"),
     ("key-statistics", "Key Statistics"),
     ("ai-summary", "Smart Analysis"),
 ]
 SECTION_TITLES = dict(SECTIONS)
-# Deeper analyses (scripts/insights_pages.py): second row of the menu.
+# Pages (scripts/insights_pages.py): at the end of the same menu row; they select a hidden radio.
 # Changing page is a rerun, not a reload: filters and password are kept. The page is also put in the
 # URL (?page=...), so that a reload or a shared link opens the same page.
 LAB_PAGES = [("", "Main page")] + insights_pages.PAGES
 if "lab_page" not in st.session_state:
     st.session_state["lab_page"] = st.query_params.get("page", "") if st.query_params.get("page", "") in dict(LAB_PAGES) else ""
 with st.container():
-    ui.top_bar("Material Availability", "Insights Lab", SECTIONS)
+    ui.top_bar("Material Availability", "Insights Lab", SECTIONS, insights_pages.PAGES, st.session_state["lab_page"])
     PAGE = ui.lab_menu(LAB_PAGES, insights_pages.LAB_LABEL, key="lab_page")
 if PAGE:
     st.query_params["page"] = PAGE
@@ -361,7 +360,8 @@ st.caption("Each comment is written on an item of the ION workbench (a material 
 ui.status_definitions()
 
 # --- Sections: all analyses follow each other on one page (menu at the top to jump) ---
-tab1, tab2, tab3, tab5, tab6, tab7 = [st.container() for _ in range(6)]
+# (Top Root Causes, tab2, is part of the Overview: its container comes first)
+tab2, tab1, tab3, tab5, tab6, tab7 = [st.container() for _ in range(6)]
 
 
 
@@ -397,10 +397,10 @@ with tab1:
                f"A comment with several entries (journal) shows them one after the other, separated by '{ENTRY_MARK.strip()}'.")
 
 
-# ================= SECTION 2: Top Root Causes =================
+# ================= OVERVIEW (continued): Top Root Causes =================
 
 with tab2:
-    ui.section("top-root-causes", SECTION_TITLES["top-root-causes"])
+    ui.panel_header("Top Root Causes")
 
     top_n_causes = st.selectbox(
         "Select a view:", options=["Top 5", "Top 10", "Top 20"], key="radio_top_causes",
@@ -502,7 +502,10 @@ with tab2:
             })
             compare_df["Difference (pts)"] = (compare_df.iloc[:, 1] - compare_df.iloc[:, 2]).round(1)
             st.markdown("**Compared with all comments**")
-            st.dataframe(compare_df, use_container_width=True, hide_index=True)
+            st.dataframe(ui.compare_colours(compare_df, compare_df.columns[1], "% of all comments")
+                         .format({"Difference (pts)": "{:+.1f}"}), use_container_width=True, hide_index=True,
+                         column_config={compare_df.columns[1]: st.column_config.NumberColumn(help=ui.COMPARE_HELP)})
+            st.caption(ui.COMPARE_LEGEND.replace("'% of selection'", "the selection"))
 
 
 # ================= SECTIONS 3-4: Most Frequent Comments, Root Cause Trends =================
@@ -570,7 +573,10 @@ with tab6:
             "% of selection": list(stats["top_root_causes_pct"].values()),
             "% of all comments": list(stats["top_root_causes_pct_all"].values()),
         })
-        st.dataframe(cause_df, use_container_width=True, hide_index=True)
+        st.dataframe(ui.compare_colours(cause_df, "% of selection", "% of all comments"), use_container_width=True,
+                     hide_index=True, column_config={"% of selection": st.column_config.NumberColumn(
+                         format="%.1f", help=ui.COMPARE_HELP)})
+        st.caption(ui.COMPARE_LEGEND)
 
         # --- Who is concerned: vendors and MRP controllers ---
         for column, (key, label) in zip(st.columns(3), [("top_vendors", "Vendor"),
@@ -582,34 +588,19 @@ with tab6:
                                            for k, v in stats[key].items()]),
                              use_container_width=True, hide_index=True)
 
-        # --- Rising vs falling causes (the most valuable insight!) ---
+        # --- Rising vs falling causes, and impact: one line each (the material status is in the Overview) ---
         col_a, col_b = st.columns(2)
-        if stats.get("causes_increasing"):
-            with col_a:
-                st.markdown("**Increasing (first → last week)**")
-                for cause, delta in stats["causes_increasing"].items():
-                    st.caption(f"- {cause}: **+{delta}**")
-        if stats.get("causes_decreasing"):
-            with col_b:
-                st.markdown("**Decreasing (first → last week)**")
-                for cause, delta in stats["causes_decreasing"].items():
-                    st.caption(f"- {cause}: **{delta}**")
-
-        # --- Material status and impact ---
-        col_c, col_d = st.columns(2)
-        if "material_status_counts" in stats:
-            with col_c:
-                st.markdown("**Material Status**")
-                for status, count in stats["material_status_counts"].items():
-                    st.caption(f"- {status}: {count} ({count / stats['total_comments'] * 100:.1f}%)")
-        if "impact_counts" in stats:
-            with col_d:
-                st.markdown("**Impact**")
-                for impact, count in stats["impact_counts"].items():
-                    st.caption(f"- {impact}: {count} ({count / stats['total_comments'] * 100:.1f}%)")
-                not_communicated = stats["total_comments"] - sum(stats["impact_counts"].values())
-                st.caption(f"- Not communicated (nothing entered, not 'no impact'): {not_communicated} "
-                           f"({not_communicated / stats['total_comments'] * 100:.1f}%)")
+        with col_a:
+            st.markdown("**Root causes, first → last week**")
+            for arrow, key in (("↑ Increasing", "causes_increasing"), ("↓ Decreasing", "causes_decreasing")):
+                if stats.get(key):
+                    st.caption(f"{arrow}: " + " · ".join(f"{cause} **{delta:+d}**" for cause, delta in stats[key].items()))
+        with col_b:
+            st.markdown("**Impact**")
+            counts = filtered_df["Impact_Level"].value_counts().reindex(IMPACT_FILTER_OPTIONS, fill_value=0)
+            st.caption(" · ".join(f"{impact} **{count}** ({count / stats['total_comments'] * 100:.0f}%)"
+                                  for impact, count in counts.items() if count)
+                       + "  \nNot communicated = nothing entered, which does not mean 'no impact'.")
 
 
 

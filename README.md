@@ -63,7 +63,7 @@ Roche_AI_PoC/
 │   ├── stats_engine.py          # All statistics (pandas), used by the dashboard and the LLM
 │   ├── tracking.py              # Builds data/item_tracking.csv from all snapshot rows
 │   ├── insights.py              # Insights Lab: grouped comments, trends, root cause x impact, weak signals
-│   ├── insights_pages.py        # Insights Lab sections (frequent comments, trends) and pages (second row of the menu)
+│   ├── insights_pages.py        # Insights Lab sections (frequent comments, trends) and pages (end of the menu)
 │   ├── llm_summary.py           # AI summary: Mistral API (cloud) or local LLM (LM Studio)
 │   ├── pseudonymise.py          # Hides names/IDs before text is sent to DeepL or Mistral
 │   ├── config.py                # Reads the API keys from .env

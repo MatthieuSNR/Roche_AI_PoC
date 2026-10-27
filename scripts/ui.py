@@ -13,6 +13,7 @@ import os
 import re
 
 import matplotlib.pyplot as plt
+import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -101,40 +102,18 @@ div[data-testid="stVerticalBlock"] > div:has(.ion-nav) {{ position: sticky; top:
   padding: 4px; box-shadow: 0 2px 4px rgba(0,0,0,.06);
 }}
 .ion-nav a {{
-  color: #1F2937 !important; text-decoration: none !important; font-size: .86rem; padding: 6px 12px;
+  color: #1F2937 !important; text-decoration: none !important; font-size: .84rem; padding: 6px 8px;
   border-radius: {RADIUS}; white-space: nowrap;
 }}
 .ion-nav a:hover {{ background: #E8F0FE; }}
 .ion-nav a.active {{ background: {ION_BLUE}; color: #fff !important; }}
 .emo {{ margin-right: 6px; }}
-/* Menu block = first row (HTML links) + second row (radio of the new pages), without gap
-   (Streamlit gives a markdown block a margin of -1rem below it: compensated here) */
-.ion-nav-wrap {{ margin-bottom: 1rem; }}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) {{ gap: 0; }}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) [role="radiogroup"] {{
-  display: flex; flex-wrap: wrap; align-items: center; gap: 2px; background: #F8FAFD; border: 1px solid #D6DCE5;
-  border-top: none; padding: 4px; box-shadow: 0 2px 4px rgba(0,0,0,.06);
-}}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) [role="radiogroup"]::before {{
-  content: "Deeper analyses"; font-size: .74rem; font-weight: 600; color: {ION_BLUE};
-  text-transform: uppercase; letter-spacing: .03em; padding: 6px 10px 6px 8px; border-right: 1px solid #D6DCE5;
-  margin-right: 4px;
-}}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) [role="radiogroup"] label {{
-  margin: 0 !important; padding: 6px 12px; border-radius: {RADIUS}; cursor: pointer;
-}}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) [role="radiogroup"] label > div:first-child {{
-  display: none;   /* no radio circle: looks like a menu link */
-}}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) [role="radiogroup"] label p {{
-  font-size: .86rem; color: #1F2937;
-}}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) [role="radiogroup"] label:hover {{ background: #E8F0FE; }}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) [role="radiogroup"] label:has(input:checked) {{
-  background: {ION_BLUE};
-}}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) [role="radiogroup"] label:has(input:checked) p {{
-  color: #fff;
+/* Pages (Impact by Root Cause, Weak Signals): links of the same menu row, separated from the sections. They
+   select a Streamlit radio that stays hidden (a rerun, not a page load: filters and password kept). */
+.ion-nav .sep {{ width: 1px; background: #D6DCE5; margin: 4px 3px; }}
+div[data-testid="element-container"]:has([role="radiogroup"][aria-label="Pages"]),
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-nav-wrap) div[data-testid="element-container"]:has([role="radiogroup"]) {{
+  display: none;
 }}
 .ion-anchor {{ scroll-margin-top: {BAR_HEIGHT + 70}px; height: 0; }}
 /* the invisible scroll-spy iframe takes no space */
@@ -220,10 +199,10 @@ def _label(text):
     return html.escape(text)
 
 
-def top_bar(title, subtitle, sections, tag="AI PoC"):
-    """Blue title bar + navigation menu. sections = [(anchor_id, label)]: clicking a label
-    scrolls down to that section; the menu stays visible at the top of the page.
-    The second row of the menu (new pages) is a Streamlit radio drawn just after it (lab_menu)."""
+def top_bar(title, subtitle, sections, pages=(), current_page="", tag="AI PoC"):
+    """Blue title bar + navigation menu, one row. sections = [(anchor_id, label)]: clicking a label scrolls down
+    to that section of the main page; pages = [(page_id, label)]: the other pages, drawn instead of the main page
+    (they select the hidden radio of lab_menu). The menu stays visible at the top of the page."""
     st.markdown(
         f'<div class="ion-topbar"><div class="brand">{_logo_html()}'
         f'<span>{html.escape(title)}</span><span class="sub">{html.escape(subtitle)}</span>'
@@ -231,12 +210,16 @@ def top_bar(title, subtitle, sections, tag="AI PoC"):
         unsafe_allow_html=True,
     )
     links = "".join(f'<a href="#{a}" target="_self" data-target="{a}">{_label(label)}</a>' for a, label in sections)
+    if pages:
+        links += '<span class="sep"></span>' + "".join(
+            f'<a href="?page={p}" target="_self" data-page="{p}" class="page{" active" if p == current_page else ""}">'
+            f'{_label(label)}</a>' for p, label in pages)
     st.markdown(f'<div class="ion-nav-wrap"><div class="ion-nav">{links}</div></div>', unsafe_allow_html=True)
 
 
 def lab_menu(pages, label, key):
-    """Second row of the menu: the new pages, as a horizontal radio styled like the menu. Changing page
-    is a Streamlit rerun, not a page load: the filters, the password and the session are kept.
+    """The page shown, as a hidden radio: the page links of the menu (top_bar) select it. Changing page is a
+    Streamlit rerun, not a page load: the filters, the password and the session are kept.
     pages = [(page_id, label)], the first one being the main page. Returns the selected page_id."""
     names = dict(pages)
     return st.radio(label, [p for p, _ in pages], format_func=names.get, key=key, horizontal=True,
@@ -261,7 +244,7 @@ SCROLL_SPY_JS = """
         const links = [...document.querySelectorAll(".ion-nav a[data-target]")]
           .filter(a => document.getElementById(a.dataset.target));
         if (!links.length) {
-          document.querySelectorAll(".ion-nav a.active").forEach(a => a.classList.remove("active"));
+          document.querySelectorAll(".ion-nav a[data-target].active").forEach(a => a.classList.remove("active"));
           return;
         }
         // a section is "current" once its title is in the upper third of the screen
@@ -284,6 +267,15 @@ SCROLL_SPY_JS = """
       }
       // On a new page, the sections of the main page do not exist: select "Main page" in the second
       // row (a Streamlit rerun, no reload), then scroll to the section once it is drawn.
+      // A page link: select the page in the hidden radio (same label)
+      document.addEventListener("click", e => {
+        const a = e.target.closest(".ion-nav a[data-page]");
+        if (!a) return;
+        e.preventDefault();
+        const label = [...document.querySelectorAll('[role="radiogroup"] label')]
+          .find(l => l.innerText.trim() === a.innerText.trim());
+        if (label) { label.click(); window.scrollTo({top: 0}); }
+      }, true);
       document.addEventListener("click", e => {
         const a = e.target.closest(".ion-nav a[data-target]");
         if (!a || document.getElementById(a.dataset.target)) return;
@@ -342,6 +334,37 @@ def status_tiles(status_counts: dict, total: int):
             f'<div class="icon">{STATUS_ICONS[status]}</div></div>'
         )
     st.markdown(f'<div class="ion-tiles">{"".join(tiles)}</div>', unsafe_allow_html=True)
+
+
+# Heat map of a share compared with its reference (e.g. % of the selection vs % of all comments)
+COMPARE_HELP = ("Coloured by comparison with '% of all comments': green = less often than overall, no colour = "
+                "about the same, yellow = a bit more often, red = much more often.")
+COMPARE_LEGEND = ("Colour of '% of selection' compared with '% of all comments': green = less frequent here · "
+                  "no colour = about the same · yellow = a bit more frequent · red = much more frequent.")
+
+
+def compare_colour(value, reference):
+    """Transparent background of a share against its reference: ratio below 0.9 green, 0.9-1.1 none,
+    1.1-1.5 yellow, above 1.5 red; the further from the reference, the stronger the colour."""
+    if pd.isna(value) or pd.isna(reference) or reference <= 0:
+        return ""
+    ratio = value / reference
+    if ratio < 0.9:
+        rgb, strength = "47, 168, 79", min(1, (1 - ratio) / 0.6)
+    elif ratio <= 1.1:
+        return ""
+    elif ratio <= 1.5:
+        rgb, strength = "245, 197, 24", (ratio - 1.1) / 0.4
+    else:
+        rgb, strength = "224, 68, 58", min(1, (ratio - 1.5) / 1.5)
+    return f"background-color: rgba({rgb}, {0.18 + 0.27 * strength:.2f})"
+
+
+def compare_colours(frame, column, reference_column):
+    """The frame as a Styler, `column` coloured against `reference_column` (compare_colour)."""
+    colours = [compare_colour(v, r) for v, r in zip(frame[column], frame[reference_column])]
+    return (frame.style.apply(lambda _: colours, subset=[column])
+            .format({c: "{:.1f}" for c in (column, reference_column)}))
 
 
 def status_definitions():

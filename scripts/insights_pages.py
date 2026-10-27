@@ -5,7 +5,7 @@ The sidebar filters (and the timeframe) of app.py apply everywhere. The analyses
 Sections of the main page (they replaced the first versions once validated):
   frequent-comments  Most frequent comments, near-identical wordings grouped (US24)
   trends             Root cause trends on all snapshot rows + what changed between two weeks (US26)
-Pages of the second row of the menu:
+Pages (links at the end of the menu):
   cause-impact       Which root causes lead to which impact and material status
   weak-signals       Which first comments (phrases, vendor, root cause, status) announce an impact to come
 
@@ -29,7 +29,7 @@ PAGES = [
     ("cause-impact", "Impact by Root Cause"),
     ("weak-signals", "Weak Signals"),
 ]
-LAB_LABEL = "Deeper analyses"
+LAB_LABEL = "Pages"
 IMPACT_COLORS = {"Market": "#9B1C1C", "Production": "#E0443A", "Logistics": "#F5C518", "None (no impact)": "#2FA84F"}
 SIGNIFICANT = 0.05
 

@@ -35,7 +35,7 @@ Roche_AI_PoC/
 │   ├── app.py                     # Streamlit dashboard (one scrolling page, password page when shared)
 │   ├── ui.py                      # Layout: ION-like look, top menu, loading screen, result card
 │   ├── stats_engine.py            # All statistics (pandas), used by the dashboard and the LLM
-│   │   # --- Insights Lab (main page sections + second row of the menu)
+│   │   # --- Insights Lab (main page sections + pages at the end of the menu)
 │   ├── tracking.py                # Builds data/item_tracking.csv from all snapshot rows
 │   ├── insights.py                # Grouping of similar comments, trends, root cause x impact, weak signals
 │   ├── insights_pages.py          # Two main page sections + two pages (Streamlit)

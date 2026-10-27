@@ -33,6 +33,18 @@ def test_grouping_case_containment_similarity_and_root_cause():
     assert px13["Occurrences"] == 12 and px13["Main_root_cause"] == "PL_Internal Errors"
 
 
+def test_opposite_meanings_are_not_grouped():
+    groups, variants = ins.group_comments(entries([
+        ("5 complaints --> Stock coverage is critical", "S_Quality", 6),
+        ("QM lot closed --> Stock coverage non-critical", None, 1),
+        ("Stock coverage is critical", "S_Quality", 2),
+        ("px13", "D", 3), ("px13 - No stockout detected", "D", 1)]))
+    group_of = dict(zip(variants["Wording"], variants["Group"]))
+    assert group_of["QM lot closed --> Stock coverage non-critical"] != group_of["5 complaints --> Stock coverage is critical"]
+    assert group_of["Stock coverage is critical"] == group_of["5 complaints --> Stock coverage is critical"]
+    assert group_of["px13"] == group_of["px13 - No stockout detected"]          # nothing negated in common
+
+
 def test_journal_problem_and_latest_entries():
     df = pd.DataFrame({"Comment_EN": ["solved ¦▸ supplier asked ¦▸ delay announced"], "Root_Cause": ["X"]})
     assert list(ins.comment_entries(df, "problem")["Entry"]) == ["delay announced"]   # written first, shown last
