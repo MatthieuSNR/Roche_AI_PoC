@@ -72,6 +72,38 @@ section[data-testid="stSidebar"] button[data-testid="baseButton-header"]::before
   background: #fff; border: 1px solid #E1E5EB; border-radius: {RADIUS}; padding: 10px;
   box-shadow: 0 1px 2px rgba(0,0,0,.05); max-width: 100%; box-sizing: border-box;
 }}
+/* Charts drawn by ui.chart: the same card, with a small "PNG" download link under it */
+.ion-chart {{ margin-bottom: 6px; }}
+.ion-chart img {{
+  display: block; width: 100%; background: #fff; border: 1px solid #E1E5EB; border-radius: {RADIUS}; padding: 10px;
+  box-shadow: 0 1px 2px rgba(0,0,0,.05); box-sizing: border-box;
+}}
+.ion-chart .dl {{ text-align: right; font-size: .78rem; margin-top: 3px; }}
+.ion-chart .dl a, .ai-tools a {{ color: {ION_BLUE} !important; text-decoration: none; cursor: pointer; }}
+.ion-chart .dl a:hover, .ai-tools a:hover {{ text-decoration: underline; }}
+
+/* "How to read" boxes: hidden until the "Show explanations" switch of their section is on (in the browser,
+   no rerun; explain_switch / explain_box) */
+.ion-explain {{
+  display: none; background: #E8F0FE; color: #0B3A82; border-radius: {RADIUS}; padding: 12px 16px;
+  margin: 4px 0 12px 0; font-size: .92rem; line-height: 1.5;
+}}
+.ion-explain p {{ margin: 0 0 6px 0; }}
+.ion-explain p:last-child {{ margin-bottom: 0; }}
+.explain-switch {{ display: inline-flex; align-items: center; gap: 8px; cursor: pointer; user-select: none; font-size: .9rem; }}
+.explain-switch .knob {{
+  width: 30px; height: 16px; border-radius: 8px; background: #C9CED6; position: relative; transition: background .15s;
+}}
+.explain-switch .knob::after {{
+  content: ""; position: absolute; top: 2px; left: 2px; width: 12px; height: 12px; border-radius: 50%;
+  background: #fff; transition: left .15s;
+}}
+
+/* Room under the last section, so that the menu can bring its title up under the menu as well */
+.ion-page-end {{ height: 70vh; }}
+
+/* Smart Analysis: copy / download links */
+.ai-tools {{ display: flex; gap: 16px; justify-content: flex-end; font-size: .82rem; margin-top: 8px; }}
 html, .main, [data-testid="stAppViewContainer"] {{ scroll-behavior: smooth; }}
 
 /* Square corners on the Streamlit widgets too */
@@ -278,7 +310,52 @@ SCROLL_SPY_JS = """
           el.scrollIntoView({behavior: behavior, block: "start"});
         };
         go("smooth");
-        setTimeout(() => go("auto"), 900);
+        setTimeout(() => go("instant"), 1200);   // "auto" would be smooth too (CSS scroll-behavior)
+      }, true);
+      // "Show explanations" of a section: a class on the page (kept across reruns), no rerun
+      document.addEventListener("click", e => {
+        const sw = e.target.closest(".explain-switch");
+        if (!sw) return;
+        document.body.classList.toggle("explain-" + sw.dataset.section);
+      }, true);
+      // "PNG" under a chart: saves the picture already in the page
+      document.addEventListener("click", e => {
+        const a = e.target.closest(".ion-chart .dl a");
+        if (!a) return;
+        e.preventDefault();
+        const img = a.closest(".ion-chart").querySelector("img");
+        const link = document.createElement("a");
+        link.href = img.src; link.download = a.dataset.name + ".png";
+        document.body.appendChild(link); link.click(); link.remove();
+      }, true);
+      // Smart Analysis: copy (formatted, for Word / e-mail, and plain text) or download
+      document.addEventListener("click", async e => {
+        const a = e.target.closest(".ai-tools a");
+        if (!a) return;
+        e.preventDefault();
+        const box = a.closest(".ai-result").querySelector(".ai-body");
+        if (a.dataset.action === "copy") {
+          const htmlText = box.innerHTML, plain = box.innerText;
+          try {
+            await navigator.clipboard.write([new ClipboardItem({
+              "text/html": new Blob([htmlText], {type: "text/html"}),
+              "text/plain": new Blob([plain], {type: "text/plain"})})]);
+          } catch (err) {   // no clipboard API (e.g. http on another machine): copy the selection
+            const range = document.createRange(); range.selectNodeContents(box);
+            const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+            document.execCommand("copy"); sel.removeAllRanges();
+          }
+          const label = a.textContent; a.textContent = "Copied";
+          setTimeout(() => { a.textContent = label; }, 1500);
+        } else {
+          const doc = "<html><head><meta charset='utf-8'></head><body>" + box.innerHTML + "</body></html>";
+          const blob = a.dataset.action === "word" ? new Blob(["\ufeff" + doc], {type: "application/msword"})
+                                                   : new Blob([box.innerText], {type: "text/plain"});
+          const link = document.createElement("a");
+          link.href = URL.createObjectURL(blob);
+          link.download = "smart_analysis." + (a.dataset.action === "word" ? "doc" : "txt");
+          document.body.appendChild(link); link.click(); link.remove();
+        }
       }, true);
       document.addEventListener("scroll", request, true);
       window.addEventListener("resize", request);
@@ -317,6 +394,55 @@ def section_with_options(anchor_id, title):
     (settings of the section, 'Show explanations'). Header and button share a container (for the CSS)."""
     with st.container():
         return section(anchor_id, title, options=True)
+
+
+def explain_switch(section_id):
+    """'Show explanations' switch of a section. It works in the browser (a class on the page, set by the
+    script of scroll_spy): showing the explanations does not rerun the dashboard."""
+    st.markdown(
+        f'<style>body.explain-{section_id} .ion-explain[data-section="{section_id}"] {{ display: block; }}'
+        f'body.explain-{section_id} .explain-switch[data-section="{section_id}"] .knob {{ background: {ION_BLUE}; }}'
+        f'body.explain-{section_id} .explain-switch[data-section="{section_id}"] .knob::after {{ left: 16px; }}</style>'
+        f'<span class="explain-switch" data-section="{section_id}"><span class="knob"></span>Show explanations</span>',
+        unsafe_allow_html=True)
+
+
+def _markdown_html(text):
+    """**bold**, *italic*, `code` and paragraphs (blank line) of a short text, as HTML."""
+    text = html.escape(text)
+    text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", text)
+    text = re.sub(r"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])", r"<i>\1</i>", text)
+    text = re.sub(r"`(.+?)`", r"<code>\1</code>", text)
+    return "".join(f"<p>{p.strip()}</p>" for p in text.split("\n\n") if p.strip())
+
+
+def explain_box(section_id, text):
+    """A 'how to read' box (markdown text), shown when the switch of its section is on."""
+    st.markdown(f'<div class="ion-explain" data-section="{section_id}">{_markdown_html(text)}</div>',
+                unsafe_allow_html=True)
+
+
+def chart(fig, name=None, tight=True):
+    """Draw a matplotlib figure as a white card, with a 'PNG' link under it that saves the picture (in the
+    browser: no rerun). name = file name (default: from the title of the chart)."""
+    import base64 as b64
+    import io
+    if name is None:
+        title = (fig._suptitle.get_text() if fig._suptitle else "") or next(
+            (ax.get_title() for ax in fig.axes if ax.get_title()), "chart")
+        name = re.sub(r"[^A-Za-z0-9]+", "_", title.split(" — ")[0]).strip("_").lower() or "chart"
+    buffer = io.BytesIO()
+    fig.savefig(buffer, format="png", dpi=160, bbox_inches="tight" if tight else None, facecolor="white")
+    plt.close(fig)
+    data = b64.b64encode(buffer.getvalue()).decode()
+    st.markdown(f'<div class="ion-chart"><img src="data:image/png;base64,{data}" alt="{html.escape(name)}">'
+                f'<div class="dl"><a href="#" data-name="{html.escape(name)}">⬇ PNG</a></div></div>',
+                unsafe_allow_html=True)
+
+
+def page_end():
+    """Empty room at the bottom of the page: the menu can bring the last section's title up under it."""
+    st.markdown('<div class="ion-page-end"></div>', unsafe_allow_html=True)
 
 
 def panel_header(title):
@@ -519,7 +645,10 @@ def _inline(text, max_bold=1):
         nonlocal count
         count += 1
         return f"<b>{match.group(1)}</b>" if count <= max_bold else match.group(1)
-    return re.sub(r"\*\*(.+?)\*\*", bold, html.escape(text))
+    text = re.sub(r"\*\*(.+?)\*\*", bold, html.escape(text))
+    # *single* asterisks (italic in markdown) and lone ones: plain text, never shown as stars
+    text = re.sub(r"(?<![\w*])\*(?!\s)(.+?)(?<!\s)\*(?![\w*])", r"\1", text)
+    return text.replace("*", "")
 
 
 def summary_to_html(text):
@@ -550,9 +679,12 @@ def summary_to_html(text):
     return "".join(out)
 
 
-def ai_result_html(text, meta):
-    return (f'<div class="ai-result">{summary_to_html(text)}'
-            f'<div class="meta">{html.escape(meta)}</div></div>')
+def ai_result_html(text, meta, tools=True):
+    """The analysis as a card; tools = links to copy it (formatted) or download it (Word, text), in the browser."""
+    links = ('<div class="ai-tools"><a data-action="copy">Copy</a><a data-action="word">Download Word</a>'
+             '<a data-action="text">Download text</a></div>') if tools else ""
+    return (f'<div class="ai-result"><div class="ai-body">{summary_to_html(text)}</div>'
+            f'<div class="meta">{html.escape(meta)}</div>{links}</div>')
 
 
 def ai_result(text, meta):

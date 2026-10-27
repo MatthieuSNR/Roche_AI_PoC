@@ -101,3 +101,9 @@ def test_alias_invented_by_the_model_becomes_a_neutral_label():
     p = PromptPseudonymiser(pd.DataFrame({"VENDOR_NAME": ["Acme Medical GmbH"], "PURCHASING_GROUP": ["G1 - Team"]}))
     p.apply({"Acme Medical GmbH": 1, "G1 - Team": 2})
     assert p.restore_text("Ask PGROUP_1 and PGROUP_7 about VENDOR_1") == "Ask G1 - Team and a purchasing group about Acme Medical GmbH"
+
+
+def test_rendered_analysis_shows_no_asterisks():
+    import ui
+    html_text = ui.summary_to_html("### Key findings\n- **Vendor A** drives *most* stock-outs, **second** one\n- a lone * star")
+    assert "*" not in html_text and html_text.count("<b>") == 1 and "most stock-outs" in html_text

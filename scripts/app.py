@@ -433,7 +433,7 @@ with tab2:
         fig.tight_layout()
 
         with col_bar:
-            st.pyplot(fig, bbox_inches=None)  # keep the exact figure size (same height as the pie)
+            ui.chart(fig, "top_root_causes", tight=False)  # keep the exact figure size (same height as the pie)
             st.caption(f"% = share of the {total_comments} comments of the selection. "
                        f"{no_cause_count} comments ({no_cause_count / total_comments * 100:.1f}%) have no root cause.")
 
@@ -473,7 +473,7 @@ with tab2:
                        ncol=2, fontsize=7, frameon=False, handlelength=1, columnspacing=1)
 
         with col_pie:
-            st.pyplot(fig_pie, bbox_inches=None)
+            ui.chart(fig_pie, "root_cause_share", tight=False)
             # Keep the caption only for the "Other" context
             st.caption(f"Share among the comments WITH a root cause. "
                        f"'Other' = all remaining root causes beyond the Top {n_causes} ({other_count} comments).")
@@ -706,7 +706,7 @@ def render_ai_summary(mode: str):
         live = st.empty()
         meta = f"{selection_name} · writing…" if cloud else f"{selection_name} · writing with the {label}…"
         while not result["done"]:
-            live.markdown(ui.ai_result_html("".join(result["parts"]) + " ▌", meta), unsafe_allow_html=True)
+            live.markdown(ui.ai_result_html("".join(result["parts"]) + " ▌", meta, tools=False), unsafe_allow_html=True)
             time.sleep(0.15)
         live.empty()
 
@@ -739,3 +739,5 @@ with tab_signals:
 with tab7:
     ui.section("ai-summary", SECTION_TITLES["ai-summary"])
     render_ai_summary("cloud")  # local LLM (LM Studio) kept as a backup: render_ai_summary("local")
+
+ui.page_end()  # room under Smart Analysis: the menu brings its title up under the menu too
