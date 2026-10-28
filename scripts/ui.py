@@ -258,13 +258,13 @@ def _label(text):
     return html.escape(text)
 
 
-def top_bar(title, subtitle, sections, tag="AI PoC"):
+def top_bar(title, subtitle, sections, tag=""):
     """Blue title bar + navigation menu, one row over the full width. sections = [(anchor_id, label)]: clicking a
     label scrolls to that section, its blue title just under the menu; the menu stays visible at the top."""
     st.markdown(
         f'<div class="ion-topbar"><div class="brand">{_logo_html()}'
         f'<span>{html.escape(title)}</span><span class="sub">{html.escape(subtitle)}</span>'
-        f'<span class="tag">{html.escape(tag)}</span></div></div>',
+        + (f'<span class="tag">{html.escape(tag)}</span>' if tag else "") + '</div></div>',
         unsafe_allow_html=True,
     )
     links = "".join(f'<a href="#{a}" target="_self" data-target="{a}">{_label(label)}</a>' for a, label in sections)
