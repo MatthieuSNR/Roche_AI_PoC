@@ -496,6 +496,12 @@ def _bar_vs_average(frame, label_column, value_column, average, title, highlight
     return fig
 
 
+def weak_signals(tracking, comments_en):
+    """_weak_signals for the current tracking table and comments (the page and the Smart Analysis)."""
+    version = (os.path.getmtime(TRACKING_PATH), hash(tuple(sorted(comments_en.items(), key=str))))
+    return _weak_signals(tracking, comments_en, version)
+
+
 @st.cache_data(show_spinner="Looking for weak signals in the selection...")
 def _selection_signals(items):
     return ins.signal_phrases(items), {c: ins.signal_context(items, c) for c in ins.CONTEXT}
@@ -521,8 +527,7 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
             "A weak signal = a phrase or a context after which such an impact comes more often than usual. "
             "Everything on this page follows the sidebar filters and the timeframe (items first commented in it); "
             "only the prediction tool is trained on the whole history, because it needs volume.")
-    all_items, model = _weak_signals(tracking, comments_en,
-                                     (os.path.getmtime(TRACKING_PATH), hash(tuple(sorted(comments_en.items(), key=str)))))
+    all_items, model = weak_signals(tracking, comments_en)
     in_scope = set(map(tuple, tracking_filtered[ins.ITEM].drop_duplicates().to_numpy()))
     items = all_items[[(m, v) in in_scope for m, v in zip(all_items["MATERIAL_NUMBER"], all_items["VENDOR_ACCOUNT_NUMBER"])]]
     if period:
@@ -822,7 +827,7 @@ def smart_context(df, filtered_df, selections, period=None, timeframe=""):
     facts["items_in_selection"] = int(len(items_scope))
 
     # 4. weak signals of the selection and watch list
-    all_items, model = _weak_signals(tracking, st.session_state.get("_comments_en") or dict(zip(df["Comment"], df["Comment_EN"])))
+    all_items, model = weak_signals(tracking, st.session_state.get("_comments_en") or dict(zip(df["Comment"], df["Comment_EN"])))
     keys = set(map(tuple, scope[ins.ITEM].drop_duplicates().to_numpy()))
     items = all_items[[(m, v) in keys for m, v in zip(all_items["MATERIAL_NUMBER"], all_items["VENDOR_ACCOUNT_NUMBER"])]]
     if len(items):
