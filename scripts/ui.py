@@ -86,6 +86,7 @@ section[data-testid="stSidebar"] [data-baseweb="tag"] span[title] {{
 }}
 section[data-testid="stSidebar"] [data-baseweb="select"] > div > div:first-child {{ min-width: 0; }}
 
+div[data-testid="element-container"]:has(> div .ion-pane-mark) {{ display: none; }}
 /* Switch in the browser (client_switch): one bar split in equal parts, the first option chosen by default */
 .ion-seg {{ display: flex; width: 100%; border: 1px solid {ION_BLUE}; border-radius: {RADIUS}; overflow: hidden;
   margin: 2px 0 10px 0; }}
@@ -478,19 +479,33 @@ def findings_html(lines):
 
 def client_switch(group, options):
     """A bar split in equal parts over the full width, one per option; the chosen one in blue. It only shows one
-    of the panes (pane(group, i, html)) and hides the others, in the browser: no rerun of the dashboard."""
-    rules = []
+    of the panes and hides the others, in the browser: no rerun of the dashboard. A pane is either HTML
+    (pane(group, i, html)) or a container of any Streamlit elements (with pane_container(group, i): ...)."""
+    def show(option, visible, on=""):
+        """CSS showing (or hiding) the pane(s) `option` (None = all) of the group; on = condition on the page."""
+        o = "" if option is None else f'[data-option="{option}"]'
+        return (f'{on} .ion-pane[data-group="{group}"]{o} {{ display: {"block" if visible else "none"}; }}'
+                f'{on} div[data-testid="stVerticalBlockBorderWrapper"]:has(> div > div[data-testid="stVerticalBlock"] '
+                f'> div[data-testid="element-container"] .ion-pane-mark[data-group="{group}"]{o}) '
+                f'{{ display: {"block" if visible else "none"}; }}')
+
+    rules = [show(i, False) for i in range(1, len(options))]          # by default: the first option
     for i in range(1, len(options)):
         on = f"body.switch-{group}-{i}"
-        rules += [f'{on} .ion-pane[data-group="{group}"] {{ display: none; }}',
-                  f'{on} .ion-pane[data-group="{group}"][data-option="{i}"] {{ display: block; }}',
+        rules += [show(None, False, on), show(i, True, on),
                   f'{on} .ion-seg[data-group="{group}"] a[data-option="0"] {{ background: #fff; color: {ION_BLUE} !important; }}',
                   f'{on} .ion-seg[data-group="{group}"] a[data-option="{i}"] {{ background: {ION_BLUE}; color: #fff !important; }}']
-    hidden = "".join(f'.ion-pane[data-group="{group}"][data-option="{i}"] {{ display: none; }}'
-                     for i in range(1, len(options)))
     links = "".join(f'<a data-group="{group}" data-option="{i}">{html.escape(o)}</a>' for i, o in enumerate(options))
-    st.markdown(f'<style>{hidden}{"".join(rules)}</style><div class="ion-seg" data-group="{group}">{links}</div>',
+    st.markdown(f'<style>{"".join(rules)}</style><div class="ion-seg" data-group="{group}">{links}</div>',
                 unsafe_allow_html=True)
+
+
+def pane_container(group, index):
+    """A pane of client_switch holding any Streamlit elements: `with pane_container(group, i): ...`."""
+    container = st.container()
+    container.markdown(f'<span class="ion-pane-mark" data-group="{group}" data-option="{index}"></span>',
+                       unsafe_allow_html=True)
+    return container
 
 
 def pane(group, index, content_html):

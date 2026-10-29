@@ -594,56 +594,60 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
                          f"later had an impact, against **{base:.0f}%** of all the items of the selection.")
     insights_box(lines)
 
-    # --- phrases
-    ui.panel_header("Phrases in the first comment that announce an impact")
-    explain("Phrases of 2 to 3 words (common words like 'the', 'for' are skipped, so `request pull-in` stands for "
-            "\"Request for pull-in\"). The **colour** says how many times more often an impact follows than for all "
-            "the items of the selection (green = less often, yellow, orange, **red** = more than 2.5×); **solid bars with ★** are "
-            "unlikely to be chance, **light** bars could be chance (often few items). The "
-            "dashed line is the rate of all the items of the selection.\n\n"
-            "The table gives the context: the usual root cause and vendors of these comments, and an example.")
-    if phrases.empty:
-        st.info("No phrase is followed by an impact clearly more often than for all the items of the selection.")
-    else:
-        top = phrases.head(12)
-        ui.chart(_bar_vs_average, top, "Phrase", "% impact later", base, "Phrases of the first comment",
-                 (top["p-value"] < SIGNIFICANT).tolist())
-        ui.picked_table("t_phrases", phrases.assign(Significant=np.where(phrases["p-value"] < SIGNIFICANT, "Yes", "No"))
-                     .rename(columns={"× average": LIFT})
-                     [["Phrase", "Items", "Impact later", "% impact later", LIFT, "Significant", "Main root cause",
-                       "Main vendors", "Example", "p-value"]],
-                     use_container_width=True, hide_index=True, column_config={
-                         "Items": st.column_config.NumberColumn(help="Items whose first comment contains the phrase."),
-                         "Impact later": st.column_config.NumberColumn(help="Of these, items with a Production / Market "
-                                                                            "impact communicated later."),
-                         "% impact later": st.column_config.NumberColumn(help=HELP["impact_later"]),
-                         LIFT: st.column_config.NumberColumn(help=HELP["lift"]),
-                         "Significant": st.column_config.TextColumn(help=HELP["significant"]),
-                         "Example": st.column_config.TextColumn(width="large", help="A first comment with this phrase."),
-                         "p-value": st.column_config.NumberColumn(format="%.4f", help=HELP["p"])})
-
-    # --- context
-    ui.panel_header("Context of the first comment: vendor, root cause, material status")
-    explain("The same question for the context of the first comment: after which vendors, root causes and material "
-            "statuses does an impact come more often? Only values with at least 3 items are shown.")
-    names = {"VENDOR_NAME": "Vendor", "Root_Cause": "Root cause", "MATERIAL_STATUS": "Material status"}
-    for tab, column in zip(st.tabs([names[c] for c in ["VENDOR_NAME", "Root_Cause", "MATERIAL_STATUS"]]),
-                           ["VENDOR_NAME", "Root_Cause", "MATERIAL_STATUS"]):
-        with tab:
-            frame = context[column]
-            if frame.empty:
-                st.info("Not enough items.")
-                continue
-            top = frame.head(12)
-            ui.chart(_bar_vs_average, top, column, "% impact later", base, f"{names[column]} at the first comment",
+    # --- three sub-sections, one shown at a time (switch in the browser, no rerun)
+    ui.client_switch("weak-signals", ["Phrases in the first comment", "Context of the first comment",
+                                      "Watch list: open items at risk"])
+    with ui.pane_container("weak-signals", 0):
+        explain("Phrases of 2 to 3 words (common words like 'the', 'for' are skipped, so `request pull-in` stands for "
+                "\"Request for pull-in\"). The **colour** says how many times more often an impact follows than for all "
+                "the items of the selection (green = less often, yellow, orange, **red** = more than 2.5×); **solid bars with ★** are "
+                "unlikely to be chance, **light** bars could be chance (often few items). The "
+                "dashed line is the rate of all the items of the selection.\n\n"
+                "The table gives the context: the usual root cause and vendors of these comments, and an example.")
+        if phrases.empty:
+            st.info("No phrase is followed by an impact clearly more often than for all the items of the selection.")
+        else:
+            top = phrases.head(12)
+            ui.chart(_bar_vs_average, top, "Phrase", "% impact later", base, "Phrases of the first comment",
                      (top["p-value"] < SIGNIFICANT).tolist())
-            st.dataframe(frame.rename(columns={column: names[column], "× average": LIFT}).assign(
-                Significant=lambda d: np.where(d["p-value"] < SIGNIFICANT, "Yes", "No")),
-                use_container_width=True, hide_index=True, column_config={
-                    "% impact later": st.column_config.NumberColumn(help=HELP["impact_later"]),
-                    LIFT: st.column_config.NumberColumn(help=HELP["lift"]),
-                    "Significant": st.column_config.TextColumn(help=HELP["significant"]),
-                    "p-value": st.column_config.NumberColumn(format="%.4f", help=HELP["p"])})
+            ui.picked_table("t_phrases", phrases.assign(Significant=np.where(phrases["p-value"] < SIGNIFICANT, "Yes", "No"))
+                         .rename(columns={"× average": LIFT})
+                         [["Phrase", "Items", "Impact later", "% impact later", LIFT, "Significant", "Main root cause",
+                           "Main vendors", "Example", "p-value"]],
+                         use_container_width=True, hide_index=True, column_config={
+                             "Items": st.column_config.NumberColumn(help="Items whose first comment contains the phrase."),
+                             "Impact later": st.column_config.NumberColumn(help="Of these, items with a Production / Market "
+                                                                                "impact communicated later."),
+                             "% impact later": st.column_config.NumberColumn(help=HELP["impact_later"]),
+                             LIFT: st.column_config.NumberColumn(help=HELP["lift"]),
+                             "Significant": st.column_config.TextColumn(help=HELP["significant"]),
+                             "Example": st.column_config.TextColumn(width="large", help="A first comment with this phrase."),
+                             "p-value": st.column_config.NumberColumn(format="%.4f", help=HELP["p"])})
+
+    with ui.pane_container("weak-signals", 1):
+        explain("The same question for the context of the first comment: after which vendors, root causes and material "
+                "statuses does an impact come more often? Only values with at least 3 items are shown.")
+        names = {"VENDOR_NAME": "Vendor", "Root_Cause": "Root cause", "MATERIAL_STATUS": "Material status"}
+        for tab, column in zip(st.tabs([names[c] for c in ["VENDOR_NAME", "Root_Cause", "MATERIAL_STATUS"]]),
+                               ["VENDOR_NAME", "Root_Cause", "MATERIAL_STATUS"]):
+            with tab:
+                frame = context[column]
+                if frame.empty:
+                    st.info("Not enough items.")
+                    continue
+                top = frame.head(12)
+                ui.chart(_bar_vs_average, top, column, "% impact later", base, f"{names[column]} at the first comment",
+                         (top["p-value"] < SIGNIFICANT).tolist())
+                st.dataframe(frame.rename(columns={column: names[column], "× average": LIFT}).assign(
+                    Significant=lambda d: np.where(d["p-value"] < SIGNIFICANT, "Yes", "No")),
+                    use_container_width=True, hide_index=True, column_config={
+                        "% impact later": st.column_config.NumberColumn(help=HELP["impact_later"]),
+                        LIFT: st.column_config.NumberColumn(help=HELP["lift"]),
+                        "Significant": st.column_config.TextColumn(help=HELP["significant"]),
+                        "p-value": st.column_config.NumberColumn(format="%.4f", help=HELP["p"])})
+
+    with ui.pane_container("weak-signals", 2):
+        _watch_list(items, tracking, model, header=False)
 
     # --- prediction
     # --- the prediction tool: for analysts, in the statistical details (how it works, then how well it does)
@@ -689,8 +693,6 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
             explain("Each bar is a version of the tool, using different information. The further a bar goes beyond "
                     "the dashed line (all items), the better that version spots the items that will get an impact.")
 
-    _watch_list(items, tracking, model)
-
 
 def _model_chart(scores, all_base):
     """Impact rate in the top 10% of each version of the tool, against the average."""
@@ -707,11 +709,12 @@ def _model_chart(scores, all_base):
     return fig
 
 
-def _watch_list(items, tracking, model):
+def _watch_list(items, tracking, model, header=True):
     """Open items of the selection, ranked by the risk the tool gives them, with the reasons."""
-    ui.panel_header("Watch list: open items that look like those that led to an impact")
+    if header:
+        ui.panel_header("Watch list: open items that look like those that led to an impact")
     explain("Items **still visible on the last snapshot**, with no Production / Market impact communicated yet, ranked "
-            "by their risk. The risk comes from a prediction tool (see the statistical details above): it compares the item's first comment and context with "
+            "by their risk. The risk comes from a prediction tool (see the statistical details below): it compares the item's first comment and context with "
             "all the items of the past.\n\n"
             "**Why** gives the 3 elements that raise the risk of this item most. A list of items to look at first, "
             "not a certainty.")
