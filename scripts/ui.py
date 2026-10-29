@@ -86,32 +86,18 @@ section[data-testid="stSidebar"] [data-baseweb="tag"] span[title] {{
 }}
 section[data-testid="stSidebar"] [data-baseweb="select"] > div > div:first-child {{ min-width: 0; }}
 
-/* Two-part switch (ui.switch): a radio drawn as one bar split in equal parts */
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) {{ gap: 0; }}
-div[data-testid="element-container"]:has(.ion-switch) {{ display: none; }}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) [role="radiogroup"] {{
-  display: flex; flex-wrap: nowrap; gap: 0; width: 100%; border: 1px solid {ION_BLUE}; border-radius: {RADIUS};
-  overflow: hidden; margin: 2px 0 10px 0;
-}}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) [role="radiogroup"] label {{
-  flex: 1 1 0; justify-content: center; margin: 0 !important; padding: 7px 10px; cursor: pointer; background: #fff;
-}}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) [role="radiogroup"] label + label {{
-  border-left: 1px solid {ION_BLUE};
-}}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) [role="radiogroup"] label > div:first-child {{
-  display: none;   /* no radio circle */
-}}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) [role="radiogroup"] label p {{
-  font-size: .9rem; color: {ION_BLUE}; font-weight: 600;
-}}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) [role="radiogroup"] label:hover {{ background: #E8F0FE; }}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) [role="radiogroup"] label:has(input:checked) {{
-  background: {ION_BLUE};
-}}
-div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) [role="radiogroup"] label:has(input:checked) p {{
-  color: #fff;
-}}
+/* Switch in the browser (client_switch): one bar split in equal parts, the first option chosen by default */
+.ion-seg {{ display: flex; width: 100%; border: 1px solid {ION_BLUE}; border-radius: {RADIUS}; overflow: hidden;
+  margin: 2px 0 10px 0; }}
+.ion-seg a {{ flex: 1 1 0; text-align: center; padding: 7px 10px; cursor: pointer; background: #fff;
+  color: {ION_BLUE} !important; font-weight: 600; font-size: .9rem; text-decoration: none !important; user-select: none; }}
+.ion-seg a + a {{ border-left: 1px solid {ION_BLUE}; }}
+.ion-seg a:hover {{ background: #E8F0FE; }}
+.ion-seg a[data-option="0"] {{ background: {ION_BLUE}; color: #fff !important; }}
+.ion-findings {{ background: rgba(33, 195, 84, .1); color: rgb(23, 114, 51); border-radius: {RADIUS};
+  padding: 14px 18px; margin: 4px 0 12px 0; line-height: 1.55; }}
+.ion-findings p {{ margin: 0 0 8px 0; }}
+.ion-findings p:last-child {{ margin-bottom: 0; }}
 
 /* Charts drawn by ui.chart: a white card, with a small "PNG" download link under it */
 .ion-chart {{ margin-bottom: 6px; }}
@@ -366,6 +352,15 @@ SCROLL_SPY_JS = """
         if (!sw) return;
         document.body.classList.toggle("explain-" + sw.dataset.section);
       }, true);
+      // Switch of panes (client_switch): a class on the page shows the chosen pane, no rerun
+      document.addEventListener("click", e => {
+        const a = e.target.closest(".ion-seg a[data-group]");
+        if (!a) return;
+        e.preventDefault();
+        const prefix = "switch-" + a.dataset.group + "-";
+        [...document.body.classList].filter(c => c.startsWith(prefix)).forEach(c => document.body.classList.remove(c));
+        document.body.classList.add(prefix + a.dataset.option);
+      }, true);
       // "PNG" under a chart: saves the picture already in the page
       document.addEventListener("click", e => {
         const a = e.target.closest(".ion-chart .dl a");
@@ -444,14 +439,6 @@ def section_with_options(anchor_id, title):
         return section(anchor_id, title, options=True)
 
 
-def switch(key, options):
-    """A bar split in equal parts over the full width (one per option), the chosen one in blue: choose what to
-    show (e.g. one chart or the other). Returns the chosen option."""
-    with st.container():
-        st.markdown('<span class="ion-switch"></span>', unsafe_allow_html=True)
-        return st.radio(key, options, key=key, horizontal=True, label_visibility="collapsed")
-
-
 def explain_switch(section_id):
     """'Show explanations' switch of a section. It works in the browser (a class on the page, set by the
     script of scroll_spy): showing the explanations does not rerun the dashboard."""
@@ -474,7 +461,41 @@ def _markdown_html(text):
 
 def explain_box(section_id, text):
     """A 'how to read' box (markdown text), shown when the switch of its section is on."""
-    st.markdown(f'<div class="ion-explain" data-section="{section_id}">{_markdown_html(text)}</div>',
+    st.markdown(explain_html(section_id, text), unsafe_allow_html=True)
+
+
+def explain_html(section_id, text):
+    return f'<div class="ion-explain" data-section="{section_id}">{_markdown_html(text)}</div>'
+
+
+def findings_html(lines):
+    """The green box of the main findings (markdown lines), as HTML."""
+    if not lines:
+        return ""
+    paragraphs = "\n\n".join(lines)
+    return f'<div class="ion-findings">{_markdown_html(paragraphs)}</div>'
+
+
+def client_switch(group, options):
+    """A bar split in equal parts over the full width, one per option; the chosen one in blue. It only shows one
+    of the panes (pane(group, i, html)) and hides the others, in the browser: no rerun of the dashboard."""
+    rules = []
+    for i in range(1, len(options)):
+        on = f"body.switch-{group}-{i}"
+        rules += [f'{on} .ion-pane[data-group="{group}"] {{ display: none; }}',
+                  f'{on} .ion-pane[data-group="{group}"][data-option="{i}"] {{ display: block; }}',
+                  f'{on} .ion-seg[data-group="{group}"] a[data-option="0"] {{ background: #fff; color: {ION_BLUE} !important; }}',
+                  f'{on} .ion-seg[data-group="{group}"] a[data-option="{i}"] {{ background: {ION_BLUE}; color: #fff !important; }}']
+    hidden = "".join(f'.ion-pane[data-group="{group}"][data-option="{i}"] {{ display: none; }}'
+                     for i in range(1, len(options)))
+    links = "".join(f'<a data-group="{group}" data-option="{i}">{html.escape(o)}</a>' for i, o in enumerate(options))
+    st.markdown(f'<style>{hidden}{"".join(rules)}</style><div class="ion-seg" data-group="{group}">{links}</div>',
+                unsafe_allow_html=True)
+
+
+def pane(group, index, content_html):
+    """One pane of client_switch: shown when its option is chosen."""
+    st.markdown(f'<div class="ion-pane" data-group="{group}" data-option="{index}">{content_html}</div>',
                 unsafe_allow_html=True)
 
 
@@ -517,6 +538,11 @@ def chart(draw, *args, name=None, tight=True, **kwargs):
     rerun). draw(*args, **kwargs) returns a matplotlib figure; the picture is kept for the same inputs, so a
     rerun of the dashboard (e.g. an option of another section) does not draw the unchanged charts again.
     draw may also be a figure (drawn every time). name = file name (default: from the title)."""
+    st.markdown(chart_html(draw, *args, name=name, tight=tight, **kwargs), unsafe_allow_html=True)
+
+
+def chart_html(draw, *args, name=None, tight=True, **kwargs):
+    """The card of `chart` as HTML (to put it in a pane of client_switch)."""
     if isinstance(draw, plt.Figure):   # drawn every time
         png, name = _png(draw, tight), name or _chart_name(draw)
     else:
@@ -528,9 +554,8 @@ def chart(draw, *args, name=None, tight=True, **kwargs):
             _PNG_CACHE[key] = (_png(fig, tight), _chart_name(fig))
         png, default_name = _PNG_CACHE[key]
         name = name or default_name
-    st.markdown(f'<div class="ion-chart"><img src="data:image/png;base64,{png}" alt="{html.escape(name)}">'
-                f'<div class="dl"><a href="#" data-name="{html.escape(name)}">⬇ PNG</a></div></div>',
-                unsafe_allow_html=True)
+    return (f'<div class="ion-chart"><img src="data:image/png;base64,{png}" alt="{html.escape(name)}">'
+            f'<div class="dl"><a href="#" data-name="{html.escape(name)}">⬇ PNG</a></div></div>')
 
 
 def page_end():

@@ -112,6 +112,11 @@ def explain(text):
     ui.explain_box(_explain_section, text)
 
 
+def explain_html(text):
+    """explain() as HTML, to put in a pane."""
+    return ui.explain_html(_explain_section, text)
+
+
 def details(title="Statistical details (for analysts)"):
     return st.expander(title, expanded=False)
 
@@ -392,30 +397,31 @@ def page_cause_impact(tracking, selection_name):
     charted = shown if len(shown) <= max_bars else pd.concat([shown.head(max_bars // 2), shown.tail(max_bars // 2)])
     order = charted["Root cause"].tolist()
     impact_label, status_label = f"Impact communicated per {by.lower()}", f"Worst material status per {by.lower()}"
-    view = ui.switch("lab_impact_chart", [impact_label, status_label])
     if len(charted) < len(shown):
         st.caption(f"The chart shows the {max_bars // 2} {by.lower()}s that most often and the {max_bars // 2} that "
                    f"least often lead to a severe impact, out of {len(shown)}; the statistical details list them all "
                    "(Options: more bars).")
-    if view == impact_label:
-        counts = table.loc[order, list(IMPACT_COLORS)]
-        shares = counts.div(counts.sum(axis=1), axis=0) * 100
-        notes = [f"{n} items{' ★' if p < SIGNIFICANT else ''}" for n, p in zip(counts.sum(axis=1), charted["p-value"])]
-        ui.chart(_stacked_bars, shares, counts, IMPACT_COLORS, f"{impact_label} (sorted by share of Production + "
-                 "Market)", "% of the items with a communicated impact", notes)
-        insights_box(lines)
-        explain("Each bar = 100% of the items of a root cause whose impact was communicated. **Dark red and red** = "
-                "severe impacts (Market, Production); **green** = no impact.\n\n"
-                "The root causes at the **top** most often lead to a severe impact. **★** = the difference with the "
-                f"{base:.0f}% of the whole selection is unlikely to be chance.")
-    else:
-        status = ins.root_cause_status(data).reindex(order).fillna(0)
-        status_shares = status.div(status.sum(axis=1).replace(0, np.nan), axis=0).fillna(0) * 100
-        ui.chart(_stacked_bars, status_shares, status, ui.STATUS_COLORS, status_label,
-                 "% of the items with this root cause", [f"{int(n)} items" for n in status.sum(axis=1)])
-        explain("For the same root causes, in the same order: the **worst material status** each item reached while "
-                "the root cause was entered (ION colours: red = Actual Stock Out, orange = Potential, yellow = Below "
-                "Safety, green = Good).")
+    # both charts are in the page (pictures kept for the same data); the switch shows one of them in the browser
+    ui.client_switch("impact-chart", [impact_label, status_label])
+    counts = table.loc[order, list(IMPACT_COLORS)]
+    shares = counts.div(counts.sum(axis=1), axis=0) * 100
+    notes = [f"{n} items{' ★' if p < SIGNIFICANT else ''}" for n, p in zip(counts.sum(axis=1), charted["p-value"])]
+    ui.pane("impact-chart", 0,
+            ui.chart_html(_stacked_bars, shares, counts, IMPACT_COLORS, f"{impact_label} (sorted by share of "
+                          "Production + Market)", "% of the items with a communicated impact", notes)
+            + ui.findings_html(lines)
+            + explain_html("Each bar = 100% of the items of a root cause whose impact was communicated. **Dark red "
+                           "and red** = severe impacts (Market, Production); **green** = no impact.\n\n"
+                           "The root causes at the **top** most often lead to a severe impact. **★** = the difference "
+                           f"with the {base:.0f}% of the whole selection is unlikely to be chance."))
+    status = ins.root_cause_status(data).reindex(order).fillna(0)
+    status_shares = status.div(status.sum(axis=1).replace(0, np.nan), axis=0).fillna(0) * 100
+    ui.pane("impact-chart", 1,
+            ui.chart_html(_stacked_bars, status_shares, status, ui.STATUS_COLORS, status_label,
+                          "% of the items with this root cause", [f"{int(n)} items" for n in status.sum(axis=1)])
+            + explain_html("For the same root causes, in the same order: the **worst material status** each item "
+                           "reached while the root cause was entered (ION colours: red = Actual Stock Out, orange = "
+                           "Potential, yellow = Below Safety, green = Good)."))
 
     with details():
         # the table of every root cause, with the statistics (for analysts)
@@ -640,25 +646,9 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
                     "p-value": st.column_config.NumberColumn(format="%.4f", help=HELP["p"])})
 
     # --- prediction
-    ui.panel_header("How well can the tool anticipate an impact?")
-    if not model:
-        st.info("Not enough items to train a model.")
-    else:
+    # --- the prediction tool: for analysts, in the statistical details (how it works, then how well it does)
+    if model:
         scores = model["scores"]
-        n_top, hit, found = _top_share(items)
-        lines = [f"In this selection, if you check first the **{n_top} items** (10%) the tool ranks most at risk, "
-                 f"**{hit:.0f}%** of them later had a Production / Market impact, against **{base:.0f}%** of all items"
-                 + (f": **{hit / base:.1f}× better than checking at random**." if base else ".")]
-        if len(severe):
-            lines.append(f"These {n_top} items contain **{found:.0f}%** of the impacts that came later in the selection.")
-        lines.append("Over all items, using the comment and its context (vendor, root cause, status) works better than "
-                     f"the root cause alone: {scores.iloc[-1]['Impact rate in the top 10%']:.0f}% vs "
-                     f"{scores.iloc[0]['Impact rate in the top 10%']:.0f}% in the top 10% (chart below).")
-        insights_box(lines)
-        all_base = scores.attrs["n_severe"] / scores.attrs["n_items"] * 100
-        ui.chart(_model_chart, scores[["Model", "Impact rate in the top 10%"]], all_base, name="weak_signals_model")
-        explain("Each bar is a version of the tool, using different information. The further a bar goes beyond the "
-                "dashed line (all items), the better that version spots the items that will get an impact.")
         with details():
             st.markdown(
                 f"**Model**: logistic regression, classes balanced, on {scores.attrs['n_items']} items "
@@ -682,6 +672,23 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
                                     weights.tail(10).iloc[::-1].assign(Effect="lowers the risk")]),
                          use_container_width=True, hide_index=True)
 
+            st.markdown("**How well can the tool anticipate an impact?**")
+            n_top, hit, found = _top_share(items)
+            lines = [f"In this selection, if you check first the **{n_top} items** (10%) the tool ranks most at risk, "
+                     f"**{hit:.0f}%** of them later had a Production / Market impact, against **{base:.0f}%** of all "
+                     "items" + (f": **{hit / base:.1f}× better than checking at random**." if base else ".")]
+            if len(severe):
+                lines.append(f"These {n_top} items contain **{found:.0f}%** of the impacts that came later in the "
+                             "selection.")
+            lines.append("Over all items, using the comment and its context (vendor, root cause, status) works better "
+                         f"than the root cause alone: {scores.iloc[-1]['Impact rate in the top 10%']:.0f}% vs "
+                         f"{scores.iloc[0]['Impact rate in the top 10%']:.0f}% in the top 10% (chart below).")
+            insights_box(lines)
+            all_base = scores.attrs["n_severe"] / scores.attrs["n_items"] * 100
+            ui.chart(_model_chart, scores[["Model", "Impact rate in the top 10%"]], all_base, name="weak_signals_model")
+            explain("Each bar is a version of the tool, using different information. The further a bar goes beyond "
+                    "the dashed line (all items), the better that version spots the items that will get an impact.")
+
     _watch_list(items, tracking, model)
 
 
@@ -704,7 +711,7 @@ def _watch_list(items, tracking, model):
     """Open items of the selection, ranked by the risk the tool gives them, with the reasons."""
     ui.panel_header("Watch list: open items that look like those that led to an impact")
     explain("Items **still visible on the last snapshot**, with no Production / Market impact communicated yet, ranked "
-            "by their risk. The risk comes from the tool above: it compares the item's first comment and context with "
+            "by their risk. The risk comes from a prediction tool (see the statistical details above): it compares the item's first comment and context with "
             "all the items of the past.\n\n"
             "**Why** gives the 3 elements that raise the risk of this item most. A list of items to look at first, "
             "not a certainty.")
