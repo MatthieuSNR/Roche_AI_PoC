@@ -8,9 +8,11 @@ Sections of the dashboard (one page; the first two replaced the first versions o
   cause-impact       Which root causes lead to which impact and material status
   weak-signals       Which first comments (phrases, vendor, root cause, status) announce an impact to come
 
-Written for planners, buyers and managers: plain-language insights and coloured charts first. The settings
-and the "how to read" boxes are in a folded "Options" panel; the mechanics (why wordings were grouped, what
-changed between two weeks, statistical details) in folded panels opened on demand; a "?" on every indicator.
+Written for planners, buyers and managers: plain-language insights and coloured charts first. The settings and
+the "Show explanations" switch are behind a small "Options" button on the right of each section title; Impact by
+Root Cause (two charts) and Weak Signals (phrases, context, watch list) show one part at a time, chosen in a switch
+that works in the browser; the mechanics and statistics are in folded panels "for analysts"; a "?" on every
+indicator. smart_context() gives the same findings to the Smart Analysis.
 """
 
 import os

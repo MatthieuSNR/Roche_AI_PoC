@@ -1,8 +1,14 @@
 """
-Layout of the dashboard, close to the Roche ION Material Availability dashboard:
-blue top bar with a navigation menu, blue section headers, coloured material status tiles.
-Also the animated loading screen shown while the AI summary is generated.
-
+Layout and components of the dashboard, close to the Roche ION Material Availability dashboard:
+* look: blue top bar (a click brings back to the Overview), menu over the full width (scroll_spy: section on
+  screen, section title brought under the menu), blue section titles with an optional "Options" button,
+  material status tiles, coloured comparisons (compare_colours);
+* in the browser, without a rerun of Streamlit 1.32: "Show explanations" (explain_switch), switches between
+  parts of a section (client_switch + pane / pane_container), PNG export of the charts, copy / download of
+  the Smart Analysis;
+* charts (chart): a matplotlib figure drawn once for the same data, shown as a PNG card;
+* tables: column picker (show / hide, drag and drop with streamlit-sortables);
+* the animated loading screen and the result card of the Smart Analysis.
 Kept apart from app.py so that app.py only contains the analysis.
 """
 

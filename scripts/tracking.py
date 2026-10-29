@@ -3,7 +3,7 @@ Item tracking table: data/item_tracking.csv, built from ALL the snapshot rows, n
 
 cleaned_comments.csv keeps one row per comment, so a root cause or an impact entered without a comment is
 lost (2,218 rows with a root cause, 1,889 with an impact). This table keeps them, for the analyses over time
-of the new dashboard pages (scripts/insights.py):
+of the dashboard sections Root Cause Trends, Impact by Root Cause and Weak Signals (scripts/insights.py):
 
   one row per (snapshot day, material, vendor) = an "item" on a day, when on that day the item has a
   root cause, an impact, a comment, or the status Actual / Potential Stock Out.

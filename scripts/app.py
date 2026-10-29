@@ -1,3 +1,13 @@
+"""
+Streamlit dashboard "Material Availability – Insights Lab" (run: venv/bin/streamlit run scripts/app.py).
+
+One page, in the order of the menu:
+  Overview (status tiles, Top Root Causes) · Filtered Comments · Most Frequent Comments* · Root Cause Trends* ·
+  Key Statistics · Impact by Root Cause* · Weak Signals* · Smart Analysis
+  (* drawn by scripts/insights_pages.py from data/item_tracking.csv; the others here, with scripts/stats_engine.py)
+Also: password page (APP_PASSWORD in .env), sidebar filters + timeframe + saved views, which apply to every section.
+Look and components (menu, switches, charts, tables, loading screen) are in scripts/ui.py.
+"""
 import streamlit as st
 import pandas as pd
 import matplotlib.pyplot as plt

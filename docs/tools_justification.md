@@ -1,6 +1,26 @@
 # 🛠️ Tools and Libraries Justification
 
-This document justifies the **selection of tools, libraries, and frameworks** used in the **Roche AI PoC: Material Availability Dashboard Optimization** project.
+This document justifies the **selection of tools, libraries, and frameworks** used in the **Roche AI PoC: Material Availability – Insights Lab** project (state on 29 October 2026; installed versions in `venv`, minimum versions in `requirements.txt`).
+
+| Section | Tool | Used in |
+|---|---|---|
+| 1 | Python 3.12.4 | everything |
+| 2 | VS Code | development |
+| 3 | pandas 2.2.3 (+ numpy 1.26.4) | pipeline, statistics, dashboard |
+| 4 | spaCy 3.8.16 | notebook explorations only |
+| 5 | langdetect 1.0.9, DeepL API (`deepl` 1.32.0) | pipeline steps 5 and 7 |
+| 6 | Mistral API, LM Studio, `openai` client 3.26.0 | Smart Analysis |
+| 7 | matplotlib 3.8.4, seaborn 0.13.2 | charts (seaborn: one notebook heatmap) |
+| 8 | Streamlit 1.32.0, streamlit-sortables 0.3.1 | dashboard |
+| 9 | `venv` | environment |
+| 10 | `.env` + python-dotenv 1.2.4 | keys and password |
+| 11 | project structure | — |
+| 12 | ngrok 3.20.0 | remote usability tests |
+| 13 | pytest 9.1.1 | tests |
+| 14 | openpyxl 3.1.5 | Excel sheet for the planners |
+| 15 | scikit-learn 1.4.2, SciPy 1.17.1, sentence-transformers 3.4.1 (+ PyTorch 2.14.1, transformers 4.57.6) | Insights Lab analyses |
+| 16 | Jupyter 1.1.1 (+ nbconvert) | step-by-step notebooks |
+| 17 | Git / GitHub | versioning |
 Each choice is grounded in **technical requirements, academic standards, and industry best practices** to ensure **reproducibility, scalability, and maintainability**.
 
 ---
@@ -73,6 +93,7 @@ Each choice is grounded in **technical requirements, academic standards, and ind
  | **Academic Use**      | Cited in **thousands of research papers** (e.g., [Nature](https://www.nature.com/), [IEEE](https://ieeexplore.ieee.org/)).                                                                                     |
 
 ### **Key Features Used in the Project**
+- **numpy** (installed with pandas) is used directly for vectorised similarities (grouping of comments), the embedding cache (`.npz`) and the charts.
 - **`pd.read_csv()` + `glob`**: Load the 174 daily snapshots of `data/Snapshot_2026/` (≈2 million rows; 87,177 commented rows kept).
 - **One function per cleaning step** (`scripts/data_cleaning.py`): each step takes a DataFrame and returns a DataFrame, so that its result can be checked in a notebook cell.
 - **`groupby().agg()`**: One row per (material, vendor, comment) with `First_Seen`, `Last_Seen`, `N_Snapshots`, `Days_Active` (2,231 comments); a stable sort keeps the "latest value" of each column reproducible.
@@ -140,7 +161,8 @@ Used in the explorations of `data_cleaning.ipynb` (A: tokens, B: keywords by roo
 ### **Key Features Used in the Project** (`scripts/translation.py`)
 - **`detect_langs()`**: Language probabilities, reduced to `en` / `de`, computed **per journal entry** (a cell can mix German and English entries) and **before** the abbreviations are written out (pipeline step 5), because an abbreviation can have another meaning in each language. Known limit: short mixed entries (e.g., "via SafetyStock gedeckt") can be labelled English.
 - **`Translator.translate_text()`**: Batch translation (50 entries per call), with retry on rate limit; German entries only, pseudonymised, after the abbreviations are written out (pipeline step 7).
-- **Glossary** (`lexicon/glossary_de_en.csv`, `scripts/glossary.py`): German supply-chain jargon with a fixed English term (`Vorzug` → pull-in); created once on DeepL and reused while its content does not change. DeepL does not always apply it (16 of 140 *Vorzug* entries still came out as *priority* or *benefits*): terms marked `use = force` are written in English inside an ignored `<keep>` tag before sending, so their translation is guaranteed.
+- **Glossary** (`lexicon/glossary_de_en.csv`, `scripts/glossary.py`): German supply-chain jargon with a fixed English term (`Vorzug` → pull-in); created once on DeepL and reused while its content does not change. DeepL does not always apply it (16 of 140 *Vorzug* entries still came out as *priority* or *benefits*): terms marked `use = force` are written in English inside an ignored `<keep>` tag before sending, so their translation is guaranteed (`Vorzug`, `Vorzüge`, `Vorzugsanfrage`, and since 29.10 `Orderbuch` → source list).
+- **Abbreviations before translation** (`scripts/abbreviations.py`, `lexicon/abbreviations.csv`, reviewed by Matthieu and Alexis on 28.10): the certain abbreviations are written out in the language of each entry, so DeepL receives full words (`LT` → *Liefertermin* → *delivery date*).
 - **`Translator.get_usage()`**: Monthly character usage, printed after each run.
 
 ### **Alternatives Considered**
@@ -186,7 +208,8 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
 ### **Key Features Used in the Project** (`scripts/llm_summary.py`, `scripts/pseudonymise.py`)
 - **`chat.completions.create()`** with low temperature (0.2) for factual answers; the same prompt for cloud and local (`build_prompt`).
 - **Compact prompt** (`build_facts`): only the key statistics, without indentation or duplicated figures, and every key states its unit (`_pct` = percentage, otherwise a count) after the model turned "+75 comments" into "+75%" in a test.
-- **Structured, in-depth analysis**: 250–350 words in five fixed sections (Key findings, Trend over time, Where the issues come from, Risks to escalate, Recommended actions). The prompt includes the most frequent informative comments of the three main root causes, and the model must quote at least one comment word for word, so the analysis explains *why* and not only *how much*.
+- **Structured, in-depth analysis**: 250–320 words in five fixed sections (Key findings, What drives the issues, Early warnings, Risks to escalate, Recommended actions). The prompt includes the most frequent informative comments of the three main root causes, the findings of the Insights Lab for the same selection (root cause → impact, weak signals, watch list, long-open comments) and the filters (so that the model does not "discover" them); the model must quote comments word for word, so the analysis explains *why* and not only *how much*.
+- **Display and export** (`scripts/ui.py`): one bold phrase per bullet at most, no markdown asterisk left; **Copy** (formatted, for Word or an e-mail), **Download Word** and **Download text**, in the browser.
 - **Streaming** (`stream_summary_cloud`): the analysis appears word by word.
 - **Pseudonymised prompt** (`PromptPseudonymiser`): suppliers, MRP controllers, purchasing groups and material numbers are replaced by aliases (`VENDOR_1`, `MRP_2`, `PGROUP_3`, `MATERIAL_4`), and e-mails, @-mentions, long numbers and the company name in the comments too. The prompt tells the model to copy the aliases unchanged. The alias table stays in memory on the Mac; aliases in the answer are replaced by the real names before display (`stream_restored` holds back the last word so that half an alias is never shown). Pseudonymisation is always on for the cloud model.
 - **Nothing else is sent**: no price and no volume; only shares, counts, trends and a few short comments. A test (`tests/test_cloud_summary.py`) checks that no real supplier, MRP controller, purchasing group, material number or e-mail appears in the request, and that the answer comes back with the real names.
@@ -229,15 +252,17 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
  | **seaborn**    | **Enhanced aesthetics** for statistical plots (e.g., heatmaps, boxplots). Built on top of matplotlib.                                                                                                               |
 
 ### **Key Features Used in the Project**
-- **Bar Charts**: Top root causes with count and share of the selection.
+- **Bar Charts**: Top root causes with count and share of the selection; weak signals against the rate of all items (colour = how many times more often, solid / light = significant or not).
+- **100% stacked bars**: impact communicated and worst material status per root cause (ION colours, legend above the bars).
 - **Pie Charts**: Root cause share.
-- **Line Charts**: Weekly trend of the comments per root cause.
-- **Heatmaps** (seaborn, notebook): Root causes per vendor.
+- **Line Charts**: Items per root cause (or stakeholder) and week.
+- **Heatmaps** (seaborn, notebook only): Root causes per vendor.
+- **Drawn once per data** (`ui.chart`): a chart is a function of its data; its PNG is kept for the same inputs, so a rerun of the dashboard does not draw the unchanged charts again (4 s → 0.6 s per rerun). The PNG is put directly in the page, with a **⬇ PNG** link under it (download in the browser).
 
 ### **Alternatives Considered**
  | **Alternative** | **Rejection Reason**                                                                                     |
  |-----------------|-------------------------------------------------------------------------------------------------------|
- | Plotly          | **Interactive** but heavier and requires JavaScript for full functionality.              |
+ | Plotly          | **Interactive** but heavier and requires JavaScript for full functionality; static PNGs are also easier to put into the thesis and the slides. |
  | ggplot          | **R-based**, not compatible with Python.                                                             |
 
 ### **References**
@@ -260,21 +285,22 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
  | **Academic Use**      | Increasingly used in **research** for sharing interactive results (e.g., [arXiv](https://arxiv.org/)).                                                                                                         |
 
 ### **Key Features Used in the Project**
-- **Widgets**: Sidebar filters (MRP controller, purchasing group, vendor, material, root cause, impact, period); every filter is a **multiselect** (empty = All), so a planner can view their own scope plus the colleagues they back up (user feedback, demo of 16 Oct.). The filters **cascade**: each one only offers the values that exist within the filters above it (e.g. only the vendors of the selected MRP controllers).
-- **Saved views** (like SAP *personalised views*): the current filters, period and table columns can be saved under a name and re-applied in one click by any user (stored on the Mac in `data/interim/saved_views.json`, not pushed to GitHub). The columns of the tables are set in a **▥ Columns** panel that floats over the table (`st.popover`, Streamlit 1.32: it opens in the browser without a rerun and does not push the table down; it starts under the header row, so each change is visible at once): a checkbox per column to show or hide it, and **drag and drop** to change the order ([streamlit-sortables](https://github.com/ohtaman/streamlit-sortables), since Streamlit 1.32 has no built-in column menu).
-- **Top 5 / 10 / 20** of the root cause and frequent comment sections: a "Select a view" dropdown, same look as "Select a root cause" in the section below.
-- **Folding sidebar**: Views, Filters and Timeframe are menus that fold (`st.expander`, fixed titles without emojis), so every filter fits on one screen without scrolling (feedback from the first remote test).
-- **One scrolling page**: an overview (ION material status tiles) followed by 7 analysis sections (comments, root causes, frequent comments, root cause details, trends, statistics, Smart Analysis), with a menu that stays at the top of the page to jump to a section.
-- **DataFrames**: Display cleaned data and results.
-- **Plots**: Render matplotlib figures (seaborn is only used in the notebook explorations).
-- **`st.cache_data`**: The comments file is read once, not at every click.
-- **Theme + custom CSS** (`.streamlit/config.toml`, `scripts/ui.py`): a look close to the existing Roche **ION Material Availability** dashboard (Roche logo, blue panel headers, square corners, material status tiles), so planners recognise the tool. The logo is in `assets/roche_logo.png`.
+- **Widgets**: Sidebar filters (MRP controller, purchasing group, vendor, material, root cause, impact, timeframe); every filter is a **multiselect** (empty = All), so a planner can view their own scope plus the colleagues they back up (user feedback, demo of 16 Oct.). The filters **cascade**: each one only offers the values that exist within the filters above it. They fold (`st.expander`) so that they fit on one screen.
+- **Saved views** (like SAP *personalised views*): filters, timeframe and table columns saved under a name and re-applied in one click (`data/interim/saved_views.json`, local).
+- **▥ Columns panel** on the large tables: `st.popover` (opens in the browser, floats over the table) with a checkbox per column and **drag and drop** of the order with [streamlit-sortables](https://github.com/ohtaman/streamlit-sortables) (Streamlit 1.32 has no built-in column menu; without the package the panel still works, without drag and drop).
+- **One scrolling page** with eight sections (Overview, Filtered Comments, Most Frequent Comments, Root Cause Trends, Key Statistics, Impact by Root Cause, Weak Signals, Smart Analysis) and a menu that stays at the top. The menu is HTML; a small script installed with `components.html` highlights the section on screen and brings a section's title just under the menu.
+- **Options** of a section: `st.popover` on the right of its blue title (settings and *Show explanations*).
+- **Work in the browser, without a rerun**: Streamlit 1.32 reruns the whole script at every click and has no partial reruns (*fragments* came in later versions). The actions that change nothing in the data are therefore done in the browser by CSS and a little JavaScript (`scripts/ui.py`): *Show explanations*, the switches between sub-sections (*Impact by Root Cause*: two charts; *Weak Signals*: three sub-sections), the PNG export, the copy and download of the Smart Analysis.
+- **Caching**: `st.cache_data` (comments file, analyses), `st.cache_resource` (tracking table shared without copy, language model), plus the charts kept per data (section 7).
+- **DataFrames**: `st.dataframe` with column help (**?**) and, for comparisons, a pandas Styler (coloured cells).
+- **Theme + custom CSS** (`.streamlit/config.toml`, `scripts/ui.py`): a look close to the existing Roche **ION Material Availability** dashboard (Roche logo, blue bar and section titles, square corners, material status tiles), so planners recognise the tool. The logo is in `assets/roche_logo.png`.
 
 ### **Alternatives Considered**
  | **Alternative** | **Rejection Reason**                                                                                     |
  |-----------------|-------------------------------------------------------------------------------------------------------|
  | Dash (Plotly)   | **More complex** to set up for simple dashboards.                                                     |
  | Flask/Django    | Requires **HTML/CSS/JavaScript knowledge** for frontend development.                                  |
+| Newer Streamlit (fragments, segmented control) | Would avoid part of the browser-side code, but the CSS of the dashboard relies on the page structure of 1.32; an upgrade is possible later, with a check of the layout. |
 
 ### **References**
 - [Streamlit Official Documentation](https://docs.streamlit.io/)
@@ -295,21 +321,13 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
  | **Version Control**   | Avoids issues with **multiple Python versions** (e.g., Python 3.9 vs. 3.12).                                                                                                                                       |
 
 ### **How It Was Implemented**
-1. **Creation**:
-   ```bash
-   python3.12 -m venv venv
-
-2. **Activation**:
-    ```bash
-    source venv/bin/activate
-
-3. **Dependency Intallation**:
-    ```bash
-    pip install -r requirements.txt
-
-4. **Deactivation**:
-    ```bash
-    deactivate
+```bash
+python3.12 -m venv venv              # creation
+source venv/bin/activate             # activation (or call venv/bin/python, venv/bin/streamlit directly)
+pip install -r requirements.txt      # dependencies
+deactivate                           # deactivation
+```
+**Pitfall met on 29.10**: the dashboard started with another Python (Anaconda) failed with `No module named 'streamlit_sortables'`; it must be started with `venv/bin/streamlit run scripts/app.py`.
 
 ### **References**
 - [Virtual Environments and Packages](https://docs.python.org/3/tutorial/venv.html)
@@ -324,7 +342,7 @@ DeepL is a **cloud service**: only the comment text is sent (no vendor, material
  | **Criteria**          | **Justification** |
  |-----------------------|-------------------|
  | **Security**          | The secrets are stored in a local `.env` file, **excluded from Git** by `.gitignore`: `DEEPL_API_KEY` (translation), `MISTRAL_API_KEY` (Smart Analysis) and `APP_PASSWORD` (password page of the shared app). `scripts/config.py` and `scripts/llm_summary.py` only read them, so the code can be pushed to GitHub without any key. |
- | **Simplicity**        | One file to edit when a key changes; `.env.example` documents the expected variables (`LM_STUDIO_*` and `MISTRAL_MODEL` are settings, not secrets). |
+ | **Simplicity**        | One file to edit when a key changes; `.env.example` documents the expected variables (`LM_STUDIO_*` and `MISTRAL_MODEL` are settings, not secrets). The app password is read again from `.env` at every login (`config.app_password`), so a new password applies without restarting; a value given on the command line wins (local test without password). |
 
 ### **Lesson Learned**
 An earlier version stored the key directly in `scripts/config.py`, which was pushed to GitHub. A key that has been pushed must be **revoked**: deleting the file does not remove it from the Git history.
@@ -342,9 +360,9 @@ Each folder and file has a **clear purpose**, making the project **easy to maint
    **Folder/File**       | **Purpose**                                                                                     | **Justification**                                                                                                                                                                                                 |
  |-----------------------|-------------------------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
  | `data/`               | **Input data**: daily snapshots, cleaned comments, translation cache (never pushed to GitHub)   | **Separation of concerns**: Raw data is isolated from scripts and outputs to avoid confusion.                                                                                                               |
- | `scripts/`            | **Python scripts and notebooks** of the PoC (pipeline, dashboard, Smart Analysis)                 | **Modularity**: Each script has a **single responsibility**: `data_cleaning.py` (pipeline steps 1-6), `entries.py` (separator of the journal entries), `abbreviations.py` (abbreviation library), `translation.py` + `glossary.py` (step 7, DeepL), `pseudonymise.py` (hides names before DeepL / Mistral), `stats_engine.py` (statistics), `llm_summary.py` (Smart Analysis), `ui.py` (layout), `app.py` (dashboard). One notebook per stage (`data_cleaning`, `translation`, `llm_summary`) runs the functions of the scripts step by step, without duplicating code. |
+ | `scripts/`            | **Python scripts and notebooks** of the PoC (pipeline, dashboard, Smart Analysis)                 | **Modularity**: Each script has a **single responsibility**: `data_cleaning.py` (pipeline steps 1-6), `entries.py` (separator of the journal entries), `abbreviations.py` (abbreviation library), `translation.py` + `glossary.py` (step 7, DeepL), `pseudonymise.py` (hides names before DeepL / Mistral), `stats_engine.py` (statistics), `tracking.py` (tracking table), `insights.py` + `insights_pages.py` (analysis sections), `llm_summary.py` (Smart Analysis), `ui.py` (layout and components), `config.py` (keys), `app.py` (dashboard). One notebook per stage (`data_cleaning`, `translation`, `llm_summary`) runs the functions of the scripts step by step, without duplicating code. |
 | `lexicon/`            | **Reference tables**: abbreviation library, DeepL glossary                                       | **Traceability**: versioned in Git, free of real comments; the planners validate them, the pipeline reads them. Files generated from the data stay in `data/interim/`. |
- | `tests/`              | **pytest tests** (comment cleaning, glossary, pseudonymisation, cloud summary)                  | **Trust**: the privacy guarantee (no real name in the request) is checked automatically, with fake API clients and no Roche data. |
+ | `tests/`              | **pytest tests** (comment cleaning, glossary, pseudonymisation, cloud summary, Insights Lab: 64 tests) | **Trust**: the privacy guarantee (no real name in the request) is checked automatically, with fake API clients and no Roche data. |
  | `assets/`, `.streamlit/` | **Roche logo, favicon, theme**                                                               | **Recognition**: a look close to the existing ION dashboard, kept out of the code. |
  | `share.sh`            | **Shares the dashboard through ngrok** (usability tests)                                         | **Control**: one command, refuses to start without a password (section 12). |
  | `outputs/`            | **Local outputs** (e.g., demo teaser), not pushed                                               | **Separation**: material made for presentations stays apart from code and data.                                                                                                                                 |
@@ -395,7 +413,7 @@ Each folder and file has a **clear purpose**, making the project **easy to maint
 
 ### **How It Works in the Project**
 - **`share.sh`** (project root): starts Streamlit on port 8505 and an ngrok tunnel to it; `caffeinate` keeps the Mac awake while the app is shared. Ctrl+C stops both.
-- **Password page** (`check_password` in `scripts/app.py`): active when `APP_PASSWORD` is set in `.env`, since anyone with the link could otherwise see the data. `share.sh` refuses to start without a password. Empty password = local use, no page.
+- **Password page** (`check_password` in `scripts/app.py`): active when `APP_PASSWORD` is set in `.env`, since anyone with the link could otherwise see the data. `share.sh` refuses to start without a password. Empty password = local use, no page. The password is read again at every login: changing it needs no restart.
 - The visitor first sees an **ngrok warning page** (free plan) and clicks *Visit Site*, then enters the password.
 
 ### **Limits**
@@ -430,14 +448,15 @@ Each folder and file has a **clear purpose**, making the project **easy to maint
  | **No dependency on data or network** | The tests use a small synthetic table and a fake API client (`tests/test_cloud_summary.py`), so they run without Roche data, without a Mistral key and offline. |
  | **Simplicity**        | Plain functions with `assert`; `python -m pytest -q tests`. |
 
-### **What Is Tested**
-- `tests/test_comment_cleaning.py`: journal entries and signatures (chains, typos, signature in a line, `n/a`), snapshot merge (partial week skipped), one row per comment without login, abbreviations by language, entry-by-entry translation, `Comment_EN` taken from the cache when the cleaned file is saved (DeepL never called).
-- `tests/test_glossary.py`: validation of the glossary, whole-word case-sensitive matching, glossary created once and reused, stale translations redone only on request.
-- `tests/test_pseudonymise.py`: identifying elements are replaced and restored; the same value gets the same placeholder (DeepL path).
-- `tests/test_cloud_summary.py`: the request of the Smart Analysis contains no real supplier, MRP controller, purchasing group, material number or e-mail; a supplier gets the same alias in the statistics and in the comments; aliases of the streamed answer (even split across chunks) are replaced by the real names; the local prompt is unchanged.
+### **What Is Tested** (64 tests)
+- `tests/test_comment_cleaning.py` (23): journal entries and signatures (chains, typos, signature in a line, `n/a`), snapshot merge (partial week skipped), one row per comment without login, abbreviations by language and on the real library, a meaning that another row would expand again, entry-by-entry translation, `Comment_EN` taken from the cache when the cleaned file is saved (DeepL never called).
+- `tests/test_glossary.py` (10): validation of the glossary, whole-word case-sensitive matching, glossary created once and reused, fallback without glossary, forced terms (also at the start of a sentence), stale translations redone only on request.
+- `tests/test_pseudonymise.py` (7): identifying elements, quantities and prices are replaced and restored; the same value gets the same placeholder.
+- `tests/test_cloud_summary.py` (8): the request of the Smart Analysis contains no real supplier, MRP controller, purchasing group, material number or e-mail; aliases of the streamed answer are replaced by the real names; the filters are known and trivial statistics dropped; an invented alias becomes a neutral label; no asterisk in the rendered analysis.
+- `tests/test_insights.py` (16): grouping rules (case, containment, root cause, meaning, opposite meanings), journal entries, tracking table, status change, root cause × impact and status, stakeholders merged, weak signals (phrases, context, model), filters of the Lab, embedding cache, a chart drawn once for the same data.
 
 ### **Limits**
-The tests do not call the real DeepL or Mistral API and do not evaluate the quality of the translation or of the analysis; the detection limits of section 5 (abbreviated names, person names) are not covered.
+The tests do not call the real DeepL or Mistral API and do not evaluate the quality of the translation or of the analysis; the detection limits of section 5 (abbreviated names, person names) are not covered. The look of the dashboard (CSS, browser-side switches) is checked by hand in a browser, not by tests.
 
 ### **References**
 - [pytest Documentation](https://docs.pytest.org/)
@@ -467,7 +486,7 @@ The tests do not call the real DeepL or Mistral API and do not evaluate the qual
 
 ---
 
-## **📌 15. Insights Lab: scikit-learn (v1.4.2) + SciPy (v1.17.1) + sentence-transformers (v3.4.1)**
+## **📌 15. Insights Lab: scikit-learn (v1.4.2) + SciPy (v1.17.1) + sentence-transformers (v3.4.1, with PyTorch 2.14.1 and transformers 4.57.6)**
 
 ### **Why?**
  | **Criteria**          | **Justification** |
@@ -478,8 +497,8 @@ The tests do not call the real DeepL or Mistral API and do not evaluate the qual
  | **Honest evaluation** | 5-fold stratified cross-validation and the Matthews correlation coefficient (MCC), which stays meaningful when severe impacts are rare (10% of the items), as in the reference paper. |
 
 ### **Key Features Used in the Project** (`scripts/insights.py`)
-- **`TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5))`** + cosine similarity: similar wordings, robust to typos and plural forms; merges also require the same main root cause.
-- **`CountVectorizer`** + **`scipy.stats.fisher_exact`**: words of the first comment followed by a severe impact more often than average (lift, one-sided test).
+- **`TfidfVectorizer(analyzer="char_wb", ngram_range=(3, 5))`** + cosine similarity: similar wordings, robust to typos and plural forms; merges also require the same main root cause, and a word negated in one wording and affirmed in the other blocks the merge (*critical* / *non-critical*). 1,504 wordings → 1,057 issues.
+- **`CountVectorizer(ngram_range=(2, 3))`** + **`scipy.stats.fisher_exact`**: phrases of 2 to 3 words of the first comment followed by a severe impact more often than for all items (lift, one-sided test).
 - **`LogisticRegression(class_weight="balanced")`**, **`StratifiedKFold`**, **`matthews_corrcoef`**, **`roc_auc_score`**: can the first comment (and its root cause) predict a Production / Market impact? Out-of-fold probabilities rank the open items of the watch list.
 - **`scipy.stats.chi2_contingency`** + Cramér's V: independence of root cause and impact (on the items whose impact was communicated only: an empty impact is unknown, not "no impact").
 - **`SentenceTransformer("all-MiniLM-L6-v2")`** (sentence-transformers + PyTorch, run on this Mac, ~90 MB model, 7 s for 1,504 texts): grouping by meaning, as an option next to the character similarity. Chosen over an embedding API (e.g. Mistral) because no comment leaves the machine; English model because the groups are made on the English translation. The vectors are kept on disk (`data/interim/embedding_cache.npz`): the model (~8 s to load) is only used for comments it has never seen, so switching to *Meaning* takes under a second.
@@ -497,3 +516,36 @@ The tests do not call the real DeepL or Mistral API and do not evaluate the qual
 - [SciPy statistics](https://docs.scipy.org/doc/scipy/reference/stats.html)
 - Usuga-Cadavid, J. P., Lamouri, S., Grabot, B., Fortin, A.: *Using deep learning to value free-form text data for predictive maintenance*, International Journal of Production Research.
 
+---
+
+---
+
+## **📌 16. Notebooks: Jupyter (v1.1.1)**
+
+### **Why?**
+ | **Criteria**          | **Justification** |
+ |-----------------------|-------------------|
+ | **Checkability**      | One notebook per stage (`data_cleaning.ipynb`, `translation.ipynb`, `llm_summary.ipynb`), one cell per pipeline step: the rows before and after each step and a few examples are shown, so a supervisor or a planner can follow the cleaning. |
+ | **No duplicated code** | The cells call the functions of `scripts/`; the scripts remain the reference. |
+ | **Safe "Run All"** | Calls to paid or external services are behind switches (`RUN_CLOUD`, `RUN_LOCAL` in `llm_summary.ipynb`; the DeepL call of `translation.ipynb` only translates what is not cached). |
+ | **Confidentiality**   | Notebooks are pushed **without outputs** (outputs show real comments); `nbconvert` (installed with Jupyter) is used to run them from the command line and to clear the outputs. |
+
+### **References**
+- [Jupyter Documentation](https://docs.jupyter.org/)
+
+---
+
+---
+
+## **📌 17. Versioning: Git and GitHub**
+
+### **Why?**
+ | **Criteria**          | **Justification** |
+ |-----------------------|-------------------|
+ | **Traceability**      | Every change is a commit with a message that explains it; the history shows how the prototype evolved (useful for the thesis). |
+ | **Backup**            | The code and the documentation are pushed to GitHub after each change (branch `feat/comment-entries`, merged into `main`). |
+ | **Confidentiality**   | The repository is **public**: only code, documentation and the reference tables are pushed. `data/`, `.env`, `venv/` and `outputs/` are excluded by `.gitignore`; the abbreviation library keeps no supplier name; notebooks are pushed without outputs. A DeepL key once pushed must be revoked (section 10). |
+
+### **References**
+- [Git Documentation](https://git-scm.com/doc)
+- [GitHub: About .gitignore](https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files)

@@ -1,5 +1,5 @@
 """
-Analyses of the new dashboard pages (Insights Lab, scripts/insights_pages.py). pandas / scikit-learn / scipy
+Analyses of the Insights Lab sections of the dashboard (drawn by scripts/insights_pages.py). pandas / scikit-learn / scipy
 only, no Streamlit here, so that every function can be tested and run in a notebook.
 
 1. group_comments       near-identical comments counted as one issue (US24, Johannes 23.10)

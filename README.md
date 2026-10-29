@@ -1,81 +1,85 @@
-# Roche AI PoC: NLP Insights from Planner Comments
+# Roche AI PoC: Material Availability – Insights Lab (NLP on Planner Comments)
 
 ## 🎯 Project Overview
 This project aims to **extract actionable insights** for Roche’s planner comments using **Natural Language Processing (NLP)**. The goal is to:
 - **Quantify recurring issues** (e.g., "50% of delays for Supplier X are due to capacity issues").
 - **Identify patterns** in comments (e.g., "urgent" + "Supplier Y" often leads to Stock Out).
 - **Provide filters** in a Streamlit dashboard to analyze comments by **supplier, material, or root cause**.
+- **Anticipate impacts**: find the early comments and contexts after which a Production / Market impact comes more often (weak signals).
 
-## 📊 Current Status
-- **Data Cleaning**: the comments of the 174 daily snapshots of `Snapshot_2026` are stored in `data/cleaned_comments.csv`: one row per (material, vendor, comment), with `First_Seen`, `Last_Seen`, `N_Snapshots` and `Days_Active` (how long the comment stayed visible). A comment cell is a **journal** (several dated and signed entries): the entries are split, the signatures (staff logins, dates) removed and kept only as anonymous metadata (`N_Entries`, `N_Authors`, `First_Entry_Date`, `Last_Entry_Date`), and the entries stay in the cell, separated by ` ¦▸ `. The cleaning runs in seven checkable steps, one notebook cell each.
-- **Abbreviation library** (`lexicon/abbreviations.csv`): German and English abbreviations of the comments (LT, PLZ, ETA, STK...) with a proposed meaning, context and confidence; only the certain ones are written out (`Comment_Expanded`) before pseudonymisation and translation. The others wait for the validation by the planners.
-- **DeepL jargon glossary** (`lexicon/glossary_de_en.csv`): German supply-chain terms that DeepL translates inconsistently or wrongly (`Vorzug` → pull-in, `Abriss` → supply gap, `Rückbuchung` → reversal posting). Only validated rows (`use = yes`, confidence high) are uploaded to DeepL; the others are proposals for the planners.
-- **Translation**: German comments are translated to English with DeepL (`Comment_EN`). Every translation is cached in `data/interim/translation_cache.csv`, so a comment is paid for only once.
-- **Streamlit Dashboard** (`scripts/app.py`): filters for **MRP controller, purchasing group, vendor, material, root cause, impact and period** (several values per filter, e.g. a planner and the colleagues they back up; the filters cascade); **saved views** (filters + table columns) that any user can re-apply; comment-centred statistics ("X% of this vendor's comments are about root cause Y, vs Z% overall", "which vendors / MRP controllers a root cause comes from", how long comments stay open); **Smart Analysis** written by the Mistral API (names pseudonymised before sending); a local LLM (LM Studio) is kept in the code as a backup.
-- **Remote access** (`share.sh`): the dashboard can be opened by testers from their own browser through an ngrok tunnel, protected by a password; the data stays on this Mac.
-- **Next Steps**: Deepen NLP analysis (keyword extraction, root cause correlations).
+## 📊 Current Status (29 October 2026)
+- **Comments file** (`data/cleaned_comments.csv`, pipeline steps 1-7): the comments of the 174 daily snapshots of `Snapshot_2026`, one row per (material, vendor, comment) with how long it stayed visible (`First_Seen`, `Last_Seen`, `Days_Active`). A comment cell is a **journal**: its dated entries are split, the signatures (staff logins) removed and the entries kept in the cell, separated by ` ¦▸ `. Each step is one function and one notebook cell, so its result can be checked on its own.
+- **Abbreviation library** (`lexicon/abbreviations.csv`): German and English abbreviations of the comments, reviewed by Matthieu and Alexis on 28.10; the 114 certain ones are written out (`Comment_Expanded`) before translation; names (suppliers, instruments, SAP codes) and ambiguous ones stay as written.
+- **Translation**: German entries translated to English with DeepL (`Comment_EN`), after pseudonymisation; a jargon glossary (`lexicon/glossary_de_en.csv`, e.g. *Vorzug* → pull-in, *Orderbuch* → source list) and a cache (each entry paid for once).
+- **Tracking table** (`data/item_tracking.csv`): one row per day and item from **all** snapshot rows (also without comment), for the trends, the impacts and the weak signals.
+- **Streamlit dashboard "Insights Lab"** (`scripts/app.py`): one page, a menu over the full width, a password page when shared. Sections: **Overview** (material status tiles, top root causes with stakeholder options), **Filtered Comments** (column picker), **Most Frequent Comments** (similar wordings grouped), **Root Cause Trends** (all snapshots, what changed between two weeks), **Key Statistics**, **Impact by Root Cause**, **Weak Signals** (phrases, context, watch list), **Smart Analysis** (Mistral API, pseudonymised; copy / Word / text export). Sidebar filters (MRP controller, purchasing group, vendor, material, root cause, impact, timeframe) apply everywhere; saved views; PNG export of every chart; explanations and statistics folded for the analysts.
+- **Remote access** (`share.sh`): testers open the dashboard in their own browser through an ngrok tunnel, behind a password; the data stays on this Mac.
+- **Tests**: 64 pytest tests on synthetic data, no network.
 
 ## 🛠️ Tools & Libraries
- | Tool/Library   | Version   | Purpose                          |
- |----------------|-----------|----------------------------------|
- | Python         | 3.12.4    | Primary scripting language       |
- | pandas         | 2.2.3     | Data manipulation, cleaning pipeline, statistics |
- | langdetect     | 1.0.9     | Language of every journal entry (DE / EN) |
- | DeepL API      | 1.32.0    | Translation DE → EN (glossary, cache) |
- | openpyxl       | 3.1.5     | Excel sheet of the abbreviations for the planners |
- | spaCy          | 3.8.16    | NLP explorations (tokens, keywords) |
- | Streamlit      | 1.32.0    | Interactive dashboard            |
- | matplotlib     | 3.8.4     | Charts of the dashboard          |
- | seaborn        | 0.13.2    | Heatmap of the notebook exploration |
- | Mistral API / LM Studio | — | Smart Analysis (cloud / local backup) |
- | pytest         | 9.1.1     | Tests (synthetic data, no network) |
+Versions installed in `venv` (Python 3.12.4); minimum versions in `requirements.txt`.
 
-*(See [docs/tools_justification.md](docs/tools_justification.md) for detailed justifications.)*
+| Tool / library | Version | Purpose |
+|---|---|---|
+| Python | 3.12.4 | Language of the whole project |
+| pandas (+ numpy) | 2.2.3 (1.26.4) | Cleaning pipeline, statistics, tables |
+| langdetect | 1.0.9 | Language of every journal entry (DE / EN) |
+| deepl (DeepL API) | 1.32.0 | Translation DE → EN, glossary, usage |
+| openpyxl | 3.1.5 | Excel sheet of the abbreviations for the planners |
+| scikit-learn | 1.4.2 | Grouping of similar comments (TF-IDF), weak-signal model (logistic regression, cross-validation, MCC) |
+| SciPy | 1.17.1 | Chi-square and Fisher tests |
+| sentence-transformers (+ PyTorch, transformers) | 3.4.1 (2.14.1, 4.57.6) | Grouping by meaning: local model all-MiniLM-L6-v2 |
+| openai (client) | 3.26.0 | Mistral API (cloud) and LM Studio (local), both OpenAI-compatible |
+| Mistral API / LM Studio | ministral-14b-latest / Mistral 7B | Smart Analysis (cloud) / local backup |
+| Streamlit | 1.32.0 | Dashboard |
+| streamlit-sortables | 0.3.1 | Drag and drop of the table columns |
+| matplotlib | 3.8.4 | Charts of the dashboard (PNG) |
+| seaborn | 0.13.2 | Heatmap of a notebook exploration |
+| spaCy | 3.8.16 | Notebook explorations (lemmas, keywords) |
+| python-dotenv | 1.2.4 | Keys and password from `.env` |
+| Jupyter | 1.1.1 | Notebooks: one cell per pipeline step |
+| pytest | 9.1.1 | Tests (synthetic data, fake API clients) |
+| ngrok | 3.20.0 (free plan) | Tunnel for the remote usability tests |
+| Git / GitHub | — | Versioning (code and documentation only) |
+
+*(See [docs/tools_justification.md](docs/tools_justification.md) for why each tool was chosen and its limits.)*
 
 ## 📁 Project Structure
 
 ```
 Roche_AI_PoC/
-├── data/
-│   ├── Snapshot_2026/           # Raw daily snapshots (not pushed to GitHub)
-│   ├── interim/                 # translation_cache.csv (not pushed to GitHub)
-│   ├── cleaned_comments.csv     # Cleaned + translated comments (not pushed to GitHub)
-│   └── item_tracking.csv        # All snapshot rows per day and item, for the Insights Lab (not pushed)
-│
+├── data/                        # Confidential, never pushed (.gitignore)
+│   ├── Snapshot_2026/           # Raw daily snapshots
+│   ├── interim/                 # Translation cache, DeepL glossary id, embedding cache, saved views, review sheets
+│   ├── cleaned_comments.csv     # Cleaned, expanded and translated comments
+│   └── item_tracking.csv        # One row per (day, material, vendor) from all snapshot rows
 ├── lexicon/
-│   ├── abbreviations.csv        # Library of abbreviations (DE/EN) with proposed meanings, to be validated by the planners
-│   └── glossary_de_en.csv       # DeepL glossary of German jargon (proposed translations, to be validated)
-│
-├── docs/
-│   ├── project_steps.md         # Step-by-step methodology (pipeline steps 1 to 7)
-│   ├── project_structure.md     # Every folder and file, and the data flow
-│   └── tools_justification.md   # Tools/libraries justification
-│
-├── outputs/                     # Local outputs, not pushed (demo teaser)
-│
-├── scripts/
+│   ├── abbreviations.csv        # Abbreviation library (DE / EN), reviewed 28.10
+│   └── glossary_de_en.csv       # DeepL glossary of German jargon
+├── scripts/                     # Python modules and notebooks (flat: the notebooks import the modules)
+│   ├── data_cleaning.py         # Pipeline steps 1-6 (+ save with Comment_EN from the cache)
+│   ├── entries.py               # Separator ' ¦▸ ' between the journal entries of a cell
+│   ├── abbreviations.py         # Abbreviation library: expansion, checks, Excel sheet
+│   ├── translation.py           # Step 7: pseudonymise + DeepL entry by entry, glossary, cache
+│   ├── glossary.py              # DeepL glossary: checks, creation / reuse, forced terms
+│   ├── pseudonymise.py          # Hides names, IDs, quantities, prices before DeepL / Mistral
+│   ├── tracking.py              # Builds data/item_tracking.csv
+│   ├── stats_engine.py          # Statistics of the dashboard and of the Smart Analysis
+│   ├── insights.py              # Grouping, trends, root cause × impact, weak signals (analyses)
+│   ├── insights_pages.py        # Sections Most Frequent Comments, Trends, Impact, Weak Signals (Streamlit)
+│   ├── llm_summary.py           # Smart Analysis: prompt, Mistral API, LM Studio
 │   ├── app.py                   # Streamlit dashboard
-│   ├── data_cleaning.py         # Pipeline steps 1-6 (merge, commented rows, journal split, dedup, language, abbreviations)
-│   ├── entries.py               # Separator ' ¦▸ ' between the entries of a comment cell
-│   ├── abbreviations.py         # Reads lexicon/abbreviations.csv, writes abbreviations out, Excel sheet for the planners
-│   ├── translation.py           # Step 7: pseudonymise + DeepL translation entry by entry (Comment_EN), glossary, cache
-│   ├── glossary.py              # Reads lexicon/glossary_de_en.csv, creates/reuses the DeepL glossary
-│   ├── stats_engine.py          # All statistics (pandas), used by the dashboard and the LLM
-│   ├── tracking.py              # Builds data/item_tracking.csv from all snapshot rows
-│   ├── insights.py              # Insights Lab: grouped comments, trends, root cause x impact, weak signals
-│   ├── insights_pages.py        # Insights Lab sections (frequent comments, trends, impact, weak signals)
-│   ├── llm_summary.py           # AI summary: Mistral API (cloud) or local LLM (LM Studio)
-│   ├── pseudonymise.py          # Hides names/IDs before text is sent to DeepL or Mistral
-│   ├── config.py                # Reads the API keys from .env
-│   ├── data_cleaning.ipynb      # Steps 1-6, one cell per step (+ explorations)
-│   ├── translation.ipynb        # Step 7
-│   └── llm_summary.ipynb        # Statistics, prompt, pseudonymised prompt, cloud / local analysis
-│
-├── tests/                       # pytest tests (comment cleaning, glossary, pseudonymisation, cloud summary)
-├── share.sh                     # Shares the dashboard through an ngrok tunnel (usability tests)
-├── .env                         # API keys and app password (not pushed to GitHub)
-└── README.md
+│   ├── ui.py                    # Look, menu, switches, charts, tables, loading screen
+│   ├── config.py                # Keys and password from .env
+│   └── *.ipynb                  # data_cleaning, translation, llm_summary: step by step
+├── tests/                       # pytest (64 tests)
+├── docs/                        # project_steps.md, project_structure.md, tools_justification.md
+├── assets/, .streamlit/         # Roche logo, favicon, theme
+├── share.sh                     # Shares the dashboard through ngrok (usability tests)
+├── requirements.txt
+└── .env / .env.example          # Keys and password (.env never pushed)
 ```
+Every file is described in [docs/project_structure.md](docs/project_structure.md); the method, step by step, in [docs/project_steps.md](docs/project_steps.md).
 
 ## 🚀 How to Run
 1. **Set up the environment**:
@@ -89,15 +93,15 @@ Roche_AI_PoC/
    ```
    | `.env` line | Used for |
    |---|---|
-   | `DEEPL_API_KEY` | Translation (step 2) |
+   | `DEEPL_API_KEY` | Translation (step 2: `translation.py`) |
    | `MISTRAL_API_KEY`, `MISTRAL_MODEL` | Cloud AI summary ([console.mistral.ai](https://console.mistral.ai) → API Keys; default model `ministral-14b-latest`) |
    | `LM_STUDIO_BASE_URL`, `LM_STUDIO_MODEL` | Local AI summary (LM Studio server started) |
-   | `APP_PASSWORD` | Password page when the app is shared (step 4); leave empty for local use |
+   | `APP_PASSWORD` | Password page (read again at every login: a change applies without restarting); leave empty for local use |
 
 2. **Build and translate the comments** (after adding new snapshots to `data/Snapshot_2026/`):
    ```bash
    python scripts/data_cleaning.py
-   python scripts/tracking.py                # tracking table of all snapshot rows (Insights Lab pages)
+   python scripts/tracking.py                # tracking table of all snapshot rows (trends, impacts, weak signals)
    python scripts/abbreviations.py --check --sheet    # validates the library, writes the Excel sheet for the planners (data/interim)
    python scripts/glossary.py --check        # validates the DeepL glossary
    python scripts/translation.py --dry-run   # characters to send to DeepL + cached translations made without the glossary
@@ -120,12 +124,13 @@ Roche_AI_PoC/
    - The tester clicks **Visit Site** on the ngrok page, then enters the password.
    - Keep the terminal open and the Mac awake and online during the test; **Ctrl+C** stops the sharing.
    - Run it **once** only (free plan: one tunnel at a time); the link changes at each start.
-   - Changing `APP_PASSWORD` takes effect at the next start of `./share.sh`.
+   - A new `APP_PASSWORD` applies at the next login, without restarting.
 
 5. **Run the tests**:
    ```bash
-   python -m pytest -q tests
+   venv/bin/python -m pytest -q tests
    ```
+   64 tests, synthetic data only, no network and no key needed.
 
 
 

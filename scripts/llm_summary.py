@@ -7,8 +7,10 @@ Architecture: pandas computes the facts (stats dict), the LLM only
 interprets them — it never counts or invents figures.
 
 The prompt contains a compact selection of the statistics (no indentation, no
-duplicated figures) plus the most frequent informative comments of the main root
-causes, as evidence. The model writes a structured analysis in 5 fixed sections
+duplicated figures), the most frequent informative comments of the main root
+causes, as evidence, the findings of the Insights Lab for the same selection
+(context, see insights_pages.smart_context) and the filters, so that the model does
+not "discover" them. The model writes a structured analysis in 5 fixed sections
 (SECTIONS), which the dashboard renders as headings and bullet points. The answer
 is streamed (stream_summary) so the dashboard can show it word by word.
 """

@@ -6,7 +6,8 @@ Library of abbreviations used in the planner comments (German and English).
   a confidence level and an `expand` flag. Only rows with expand = yes are written out in the text:
   these are the ones whose meaning is certain. The others (ambiguous, unknown, names of companies or
   products) stay untouched until the planners have confirmed them: change `expand` to yes and
-  re-run scripts/data_cleaning.py.
+  re-run scripts/data_cleaning.py. Review of 28.10 (Matthieu: OK / ?, Alexis: meaning, context): a row is
+  written out only if marked OK, with one meaning that is not a name; names stay as written.
 * expand_comment() writes the abbreviations of a comment out, entry by entry, in the language of each
   entry ("50 Stk." -> "50 Stück.", "Vorzug KW34" -> "Vorzug Kalenderwoche 34").
   This runs BEFORE pseudonymisation and translation, so that DeepL receives full words.

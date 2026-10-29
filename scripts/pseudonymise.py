@@ -1,5 +1,6 @@
 """
-Pseudonymisation of planner comments before they are sent to an external service (DeepL).
+Pseudonymisation of planner comments before they are sent to an external service (DeepL; and, through
+PromptPseudonymiser, the prompt of the Smart Analysis sent to the Mistral API).
 
 Identifying elements are replaced by numbered placeholders, e.g.
     "Lieferant Acme GmbH, PO 4500123456, Rückfrage an max.muster@roche.com"

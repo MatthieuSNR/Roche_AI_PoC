@@ -1,6 +1,6 @@
 # config.py
-# API keys are read from the .env file at the project root (never pushed to GitHub, see .gitignore).
-# Copy .env.example to .env and fill DEEPL_API_KEY.
+# API keys and the app password are read from the .env file at the project root (never pushed to GitHub, see
+# .gitignore). Copy .env.example to .env and fill DEEPL_API_KEY, MISTRAL_API_KEY and, to share the app, APP_PASSWORD.
 
 import os
 
