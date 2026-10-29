@@ -16,6 +16,7 @@ from llm_summary import (stream_summary, stream_summary_cloud, tidy, is_server_a
 from pseudonymise import PromptPseudonymiser
 from entries import ENTRY_SEPARATOR
 from stats_engine import compute_stats
+import config
 import ui
 import insights
 import insights_pages
@@ -35,7 +36,7 @@ ui.apply_style()  # Look of the Roche ION Material Availability dashboard (scrip
 
 # Password gate for remote access (tunnel from this Mac): active only when APP_PASSWORD is set in .env
 def check_password():
-    password = os.getenv("APP_PASSWORD", "")
+    password = config.app_password()   # re-read from .env: a new password applies without a restart
     if not password or st.session_state.get("authenticated"):
         return
     st.title("Material Availability – Insights Lab")
