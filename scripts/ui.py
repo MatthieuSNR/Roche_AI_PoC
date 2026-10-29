@@ -86,6 +86,33 @@ section[data-testid="stSidebar"] [data-baseweb="tag"] span[title] {{
 }}
 section[data-testid="stSidebar"] [data-baseweb="select"] > div > div:first-child {{ min-width: 0; }}
 
+/* Two-part switch (ui.switch): a radio drawn as one bar split in equal parts */
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) {{ gap: 0; }}
+div[data-testid="element-container"]:has(.ion-switch) {{ display: none; }}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) [role="radiogroup"] {{
+  display: flex; flex-wrap: nowrap; gap: 0; width: 100%; border: 1px solid {ION_BLUE}; border-radius: {RADIUS};
+  overflow: hidden; margin: 2px 0 10px 0;
+}}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) [role="radiogroup"] label {{
+  flex: 1 1 0; justify-content: center; margin: 0 !important; padding: 7px 10px; cursor: pointer; background: #fff;
+}}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) [role="radiogroup"] label + label {{
+  border-left: 1px solid {ION_BLUE};
+}}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) [role="radiogroup"] label > div:first-child {{
+  display: none;   /* no radio circle */
+}}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) [role="radiogroup"] label p {{
+  font-size: .9rem; color: {ION_BLUE}; font-weight: 600;
+}}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) [role="radiogroup"] label:hover {{ background: #E8F0FE; }}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) [role="radiogroup"] label:has(input:checked) {{
+  background: {ION_BLUE};
+}}
+div[data-testid="stVerticalBlock"]:has(> div[data-testid="element-container"] .ion-switch) [role="radiogroup"] label:has(input:checked) p {{
+  color: #fff;
+}}
+
 /* Charts drawn by ui.chart: a white card, with a small "PNG" download link under it */
 .ion-chart {{ margin-bottom: 6px; }}
 .ion-chart img {{
@@ -415,6 +442,14 @@ def section_with_options(anchor_id, title):
     (settings of the section, 'Show explanations'). Header and button share a container (for the CSS)."""
     with st.container():
         return section(anchor_id, title, options=True)
+
+
+def switch(key, options):
+    """A bar split in equal parts over the full width (one per option), the chosen one in blue: choose what to
+    show (e.g. one chart or the other). Returns the chosen option."""
+    with st.container():
+        st.markdown('<span class="ion-switch"></span>', unsafe_allow_html=True)
+        return st.radio(key, options, key=key, horizontal=True, label_visibility="collapsed")
 
 
 def explain_switch(section_id):

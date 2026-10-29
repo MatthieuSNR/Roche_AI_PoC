@@ -27,13 +27,17 @@ from tracking import TRACKING_PATH
 IMPACT_COLORS = {"Market": "#9B1C1C", "Production": "#E0443A", "Logistics": "#F5C518", "None (no impact)": "#2FA84F"}
 SIGNIFICANT = 0.05
 
+# Column "times the rate of the whole selection" (the reference of every comparison: all the items of the
+# selection, i.e. the sidebar filters and the timeframe)
+LIFT = "× whole selection"
+
 # Tooltips ("?") of the indicators: what it is, and how to read it
 HELP = {
-    "lift": "How many times more often than average. 1.0 = like the average; 2.0 = twice as often; "
-            "0.5 = half as often.",
+    "lift": "How many times more often than for all the items of the selection. 1.0 = the same; 2.0 = twice as "
+            "often; 0.5 = half as often.",
     "p": "How likely the difference would appear by pure chance. Below 0.05 (5%): unlikely to be chance, the "
          "link is considered real. Above: it may be chance, read with care.",
-    "significant": "Yes = the difference with the average is unlikely to be chance (p-value below 0.05).",
+    "significant": "Yes = the difference with the whole selection is unlikely to be chance (p-value below 0.05).",
     "severe": "Share of the items whose communicated impact is Production or Market.",
     "communicated": "Items for which planning entered an impact. Items without an impact entered are left out: "
                     "their impact is unknown (not communicated), which does not mean there is none.",
@@ -222,7 +226,7 @@ def frequent_comments_section(filtered_df, selection_name):
             "Root causes (entries)": st.column_config.TextColumn(width="large", help="Root causes entered with these "
                                                                                      "comments, with their count.")})
 
-    with fold("Why were these wordings grouped?"):
+    with details("Why were these wordings grouped? (for analysts)"):
         choice = st.selectbox("Issue:", table["Comment"].tolist(), key="lab_group")
         group_id = table.loc[table["Comment"] == choice, "Group"].iloc[0]
         st.dataframe(variants[variants["Group"] == group_id][["Wording", "Occurrences", "Main_root_cause", "Reason"]]
@@ -368,60 +372,64 @@ def page_cause_impact(tracking, selection_name):
         st.info("No root cause reaches this minimum; lower it.")
         return
 
-    # --- main findings in plain words
+    # --- main findings in plain words (shown under the impact chart)
     base = test["severe_base_pct"]
-    lines = [f"On average, **{base:.0f}%** of the items with a communicated impact had a **Production or Market** impact."]
+    lines = [f"Across the selection, **{base:.0f}%** of the items with a communicated impact had a **Production or "
+             "Market** impact."]
     worse = shown[(shown["Lift"] > 1) & (shown["p-value"] < SIGNIFICANT)]
     better = shown[(shown["Lift"] < 1) & (shown["p-value"] < SIGNIFICANT)]
     for _, r in worse.head(3).iterrows():
         lines.append(f"**{r['Root cause']}** leads to a severe impact more often: **{r['% severe']:.0f}%** of its "
-                     f"{r['Impact communicated']} items ({r['Lift']:.1f}× the average).")
+                     f"{r['Impact communicated']} items ({r['Lift']:.1f} times the {base:.0f}% of the selection).")
     for _, r in better.head(2).iterrows():
         lines.append(f"**{r['Root cause']}** rarely leads to a severe impact: **{r['% severe']:.0f}%** of its "
                      f"{r['Impact communicated']} items.")
     if worse.empty and better.empty:
-        lines.append("No root cause differs clearly from the average in this selection (the differences may be chance).")
-    insights_box(lines)
+        lines.append(f"No {by.lower()} differs clearly from the {base:.0f}% of the selection (the differences may be "
+                     "chance).")
 
-    # --- chart 1: impact per root cause (at most max_bars: the most and the least often severe)
+    # --- one chart at a time: impact (default) or worst material status, chosen in a two-part switch
     charted = shown if len(shown) <= max_bars else pd.concat([shown.head(max_bars // 2), shown.tail(max_bars // 2)])
     order = charted["Root cause"].tolist()
-    counts = table.loc[order, list(IMPACT_COLORS)]
-    shares = counts.div(counts.sum(axis=1), axis=0) * 100
-    notes = [f"{n} items{' ★' if p < SIGNIFICANT else ''}" for n, p in zip(counts.sum(axis=1), charted["p-value"])]
+    impact_label, status_label = f"Impact communicated per {by.lower()}", f"Worst material status per {by.lower()}"
+    view = ui.switch("lab_impact_chart", [impact_label, status_label])
     if len(charted) < len(shown):
-        st.caption(f"The charts show the {max_bars // 2} {by.lower()}s that most often and the {max_bars // 2} that "
-                   f"least often lead to a severe impact, out of {len(shown)}; the table below lists them all "
+        st.caption(f"The chart shows the {max_bars // 2} {by.lower()}s that most often and the {max_bars // 2} that "
+                   f"least often lead to a severe impact, out of {len(shown)}; the statistical details list them all "
                    "(Options: more bars).")
-    ui.chart(_stacked_bars, shares, counts, IMPACT_COLORS, f"Impact communicated per {by.lower()} (sorted by share of "
-             "Production + Market)", "% of the items with a communicated impact", notes)
-    explain("Each bar = 100% of the items of a root cause whose impact was communicated. **Dark red and red** = "
-            "severe impacts (Market, Production); **green** = no impact.\n\n"
-            "The root causes at the **top** most often lead to a severe impact. **★** = the difference with the "
-            "average is unlikely to be chance.")
-
-    # --- chart 2: material status per root cause
-    status = ins.root_cause_status(data).reindex(order).fillna(0)
-    status_shares = status.div(status.sum(axis=1).replace(0, np.nan), axis=0).fillna(0) * 100
-    ui.chart(_stacked_bars, status_shares, status, ui.STATUS_COLORS, f"Worst material status per {by.lower()}",
-             "% of the items with this root cause", [f"{int(n)} items" for n in status.sum(axis=1)])
-    explain("For the same root causes: the **worst material status** each item reached while the root cause was "
-            "entered (ION colours: red = Actual Stock Out, orange = Potential, yellow = Below Safety, green = Good).")
-
-    # --- table
-    ui.picked_table("t_cause_impact", shown.assign(Significant=np.where(shown["p-value"] < SIGNIFICANT, "Yes", "No"))
-                 .rename(columns={"Root cause": by, "Lift": "× average"})
-                 [[by, "Stakeholder", "Items", "Impact communicated", "Severe (Prod.+Market)", "% severe", "× average",
-                   "Significant", "p-value"]].drop(columns=["Stakeholder"] if by == "Stakeholder" else []),
-                 use_container_width=True, hide_index=True, column_config={
-                     "Items": st.column_config.NumberColumn(help="Items with this root cause in the timeframe."),
-                     "Impact communicated": st.column_config.NumberColumn(help=HELP["communicated"]),
-                     "% severe": st.column_config.NumberColumn(help=HELP["severe"]),
-                     "× average": st.column_config.NumberColumn(help=HELP["lift"]),
-                     "Significant": st.column_config.TextColumn(help=HELP["significant"]),
-                     "p-value": st.column_config.NumberColumn(format="%.4f", help=HELP["p"])})
+    if view == impact_label:
+        counts = table.loc[order, list(IMPACT_COLORS)]
+        shares = counts.div(counts.sum(axis=1), axis=0) * 100
+        notes = [f"{n} items{' ★' if p < SIGNIFICANT else ''}" for n, p in zip(counts.sum(axis=1), charted["p-value"])]
+        ui.chart(_stacked_bars, shares, counts, IMPACT_COLORS, f"{impact_label} (sorted by share of Production + "
+                 "Market)", "% of the items with a communicated impact", notes)
+        insights_box(lines)
+        explain("Each bar = 100% of the items of a root cause whose impact was communicated. **Dark red and red** = "
+                "severe impacts (Market, Production); **green** = no impact.\n\n"
+                "The root causes at the **top** most often lead to a severe impact. **★** = the difference with the "
+                f"{base:.0f}% of the whole selection is unlikely to be chance.")
+    else:
+        status = ins.root_cause_status(data).reindex(order).fillna(0)
+        status_shares = status.div(status.sum(axis=1).replace(0, np.nan), axis=0).fillna(0) * 100
+        ui.chart(_stacked_bars, status_shares, status, ui.STATUS_COLORS, status_label,
+                 "% of the items with this root cause", [f"{int(n)} items" for n in status.sum(axis=1)])
+        explain("For the same root causes, in the same order: the **worst material status** each item reached while "
+                "the root cause was entered (ION colours: red = Actual Stock Out, orange = Potential, yellow = Below "
+                "Safety, green = Good).")
 
     with details():
+        # the table of every root cause, with the statistics (for analysts)
+        st.dataframe(shown.assign(Significant=np.where(shown["p-value"] < SIGNIFICANT, "Yes", "No"))
+                     .rename(columns={"Root cause": by, "Lift": LIFT})
+                     [[by, "Stakeholder", "Items", "Impact communicated", "Severe (Prod.+Market)", "% severe", LIFT,
+                       "Significant", "p-value"]].drop(columns=["Stakeholder"] if by == "Stakeholder" else []),
+                     use_container_width=True, hide_index=True, column_config={
+                         "Items": st.column_config.NumberColumn(help="Items with this root cause in the timeframe."),
+                         "Impact communicated": st.column_config.NumberColumn(help=HELP["communicated"]),
+                         "% severe": st.column_config.NumberColumn(help=HELP["severe"]),
+                         LIFT: st.column_config.NumberColumn(help=HELP["lift"]),
+                         "Significant": st.column_config.TextColumn(help=HELP["significant"]),
+                         "p-value": st.column_config.NumberColumn(format="%.4f", help=HELP["p"])})
         significant = test["p"] < SIGNIFICANT
         strength = "weak" if test["cramers_v"] < 0.2 else "moderate" if test["cramers_v"] < 0.4 else "strong"
         st.markdown(
@@ -433,7 +441,8 @@ def page_cause_impact(tracking, selection_name):
                if significant else "→ **No clear link** (p above 0.05): the differences may be chance.\n\n")
             + f"**How strong is the link?** Cramér's V = {test['cramers_v']} ({strength}). It goes from 0 (no link) "
             f"to 1 (the root cause fully decides the impact); 0.1 is weak, 0.3 moderate, 0.5 strong.\n\n"
-            f"**× average (lift)** = share of severe impacts of the root cause ÷ the average share ({base}%).\n\n"
+            f"**{LIFT} (lift)** = share of severe impacts of the root cause ÷ the share of the whole selection "
+            f"({base}%).\n\n"
             f"**p-value per root cause** (Fisher's exact test): this root cause compared with all the others. Below "
             f"0.05, the difference is unlikely to be chance (★ in the chart).\n\n"
             "**Limits**: an item with two root causes counts for both; the impact is the most severe one entered for "
@@ -453,10 +462,10 @@ def _weak_signals(_tracking, _comments_en, version):
     return items, model
 
 
-# Colour of a bar = how many times more often than average an impact follows (the further, the warmer);
+# Colour of a bar = how many times more often than for all items an impact follows (the further, the warmer);
 # solid = unlikely to be chance (p < 0.05, ★), light = could be chance (often few items)
-LIFT_BANDS = [(1.0, "#2FA84F", "below average"), (1.5, "#F5C518", "up to 1.5× average"),
-              (2.5, "#F28C28", "1.5 to 2.5× average"), (float("inf"), "#E0443A", "more than 2.5× average")]
+LIFT_BANDS = [(1.0, "#2FA84F", "less often than all items"), (1.5, "#F5C518", "up to 1.5×"),
+              (2.5, "#F28C28", "1.5 to 2.5×"), (float("inf"), "#E0443A", "more than 2.5×")]
 
 
 def _lift_colour(lift):
@@ -479,7 +488,7 @@ def _bar_vs_average(frame, label_column, value_column, average, title, highlight
     for i, (v, n, sig) in enumerate(zip(frame[value_column], frame["Items"], significant)):
         ax.text(v + 1, i, f"{v:.0f}%  ({n} items){'  ★' if sig else ''}", va="center", fontsize=7.5)
     ax.axvline(average, color="#374151", linestyle="--", linewidth=1)
-    ax.text(average, len(frame) - 0.45, f" average {average:.0f}%", fontsize=7.5, color="#374151", va="bottom")
+    ax.text(average, len(frame) - 0.45, f" all items: {average:.0f}%", fontsize=7.5, color="#374151", va="bottom")
     ax.set_ylim(-0.6, len(frame) + 0.3)   # room for the 'average' label, under the legend
     ax.set_xlim(0, 105)
     ax.set_xlabel("% of the items followed by a Production / Market impact")
@@ -562,7 +571,8 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
     if not phrases.empty:
         top = phrases.head(3)
         lines.append("Phrases most often followed by an impact: " + "; ".join(
-            f"**\"{r['Phrase']}\"** ({r['% impact later']:.0f}% of {r['Items']} items, {r['× average']:.1f}× average)"
+            f"**\"{r['Phrase']}\"** ({r['% impact later']:.0f}% of {r['Items']} items, {r['× average']:.1f} times "
+            f"the {base:.0f}% of all items)"
             for _, r in top.iterrows()) + ".")
     vendors = context["VENDOR_NAME"]
     if not vendors.empty:
@@ -575,32 +585,33 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
         aso = status[status["MATERIAL_STATUS"] == "Actual Stock Out"]
         if len(aso):
             lines.append(f"Items already in **Actual Stock Out** when first commented: **{aso['% impact later'].iloc[0]:.0f}%** "
-                         f"later had an impact, vs **{base:.0f}%** on average.")
+                         f"later had an impact, against **{base:.0f}%** of all the items of the selection.")
     insights_box(lines)
 
     # --- phrases
     ui.panel_header("Phrases in the first comment that announce an impact")
     explain("Phrases of 2 to 3 words (common words like 'the', 'for' are skipped, so `request pull-in` stands for "
-            "\"Request for pull-in\"). The **colour** says how many times more often than average an impact "
-            "follows (green = below average, yellow, orange, **red** = more than 2.5×); **solid bars with ★** are "
+            "\"Request for pull-in\"). The **colour** says how many times more often an impact follows than for all "
+            "the items of the selection (green = less often, yellow, orange, **red** = more than 2.5×); **solid bars with ★** are "
             "unlikely to be chance, **light** bars could be chance (often few items). The "
-            "dashed line is the average of all items.\n\n"
+            "dashed line is the rate of all the items of the selection.\n\n"
             "The table gives the context: the usual root cause and vendors of these comments, and an example.")
     if phrases.empty:
-        st.info("No phrase is followed by an impact clearly more often than average.")
+        st.info("No phrase is followed by an impact clearly more often than for all the items of the selection.")
     else:
         top = phrases.head(12)
         ui.chart(_bar_vs_average, top, "Phrase", "% impact later", base, "Phrases of the first comment",
                  (top["p-value"] < SIGNIFICANT).tolist())
         ui.picked_table("t_phrases", phrases.assign(Significant=np.where(phrases["p-value"] < SIGNIFICANT, "Yes", "No"))
-                     [["Phrase", "Items", "Impact later", "% impact later", "× average", "Significant", "Main root cause",
+                     .rename(columns={"× average": LIFT})
+                     [["Phrase", "Items", "Impact later", "% impact later", LIFT, "Significant", "Main root cause",
                        "Main vendors", "Example", "p-value"]],
                      use_container_width=True, hide_index=True, column_config={
                          "Items": st.column_config.NumberColumn(help="Items whose first comment contains the phrase."),
                          "Impact later": st.column_config.NumberColumn(help="Of these, items with a Production / Market "
                                                                             "impact communicated later."),
                          "% impact later": st.column_config.NumberColumn(help=HELP["impact_later"]),
-                         "× average": st.column_config.NumberColumn(help=HELP["lift"]),
+                         LIFT: st.column_config.NumberColumn(help=HELP["lift"]),
                          "Significant": st.column_config.TextColumn(help=HELP["significant"]),
                          "Example": st.column_config.TextColumn(width="large", help="A first comment with this phrase."),
                          "p-value": st.column_config.NumberColumn(format="%.4f", help=HELP["p"])})
@@ -620,11 +631,11 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
             top = frame.head(12)
             ui.chart(_bar_vs_average, top, column, "% impact later", base, f"{names[column]} at the first comment",
                      (top["p-value"] < SIGNIFICANT).tolist())
-            st.dataframe(frame.rename(columns={column: names[column]}).assign(
+            st.dataframe(frame.rename(columns={column: names[column], "× average": LIFT}).assign(
                 Significant=lambda d: np.where(d["p-value"] < SIGNIFICANT, "Yes", "No")),
                 use_container_width=True, hide_index=True, column_config={
                     "% impact later": st.column_config.NumberColumn(help=HELP["impact_later"]),
-                    "× average": st.column_config.NumberColumn(help=HELP["lift"]),
+                    LIFT: st.column_config.NumberColumn(help=HELP["lift"]),
                     "Significant": st.column_config.TextColumn(help=HELP["significant"]),
                     "p-value": st.column_config.NumberColumn(format="%.4f", help=HELP["p"])})
 
@@ -636,7 +647,7 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
         scores = model["scores"]
         n_top, hit, found = _top_share(items)
         lines = [f"In this selection, if you check first the **{n_top} items** (10%) the tool ranks most at risk, "
-                 f"**{hit:.0f}%** of them later had a Production / Market impact, against **{base:.0f}%** on average"
+                 f"**{hit:.0f}%** of them later had a Production / Market impact, against **{base:.0f}%** of all items"
                  + (f": **{hit / base:.1f}× better than checking at random**." if base else ".")]
         if len(severe):
             lines.append(f"These {n_top} items contain **{found:.0f}%** of the impacts that came later in the selection.")
@@ -647,7 +658,7 @@ def page_weak_signals(tracking, tracking_filtered, comments_en, selection_name, 
         all_base = scores.attrs["n_severe"] / scores.attrs["n_items"] * 100
         ui.chart(_model_chart, scores[["Model", "Impact rate in the top 10%"]], all_base, name="weak_signals_model")
         explain("Each bar is a version of the tool, using different information. The further a bar goes beyond the "
-                "dashed line (the average), the better that version spots the items that will get an impact.")
+                "dashed line (all items), the better that version spots the items that will get an impact.")
         with details():
             st.markdown(
                 f"**Model**: logistic regression, classes balanced, on {scores.attrs['n_items']} items "
@@ -681,7 +692,7 @@ def _model_chart(scores, all_base):
     for i, v in enumerate(scores["Impact rate in the top 10%"][::-1]):
         ax.text(v + 0.5, i, f"{v:.0f}%", va="center", fontsize=8)
     ax.axvline(all_base, color="#374151", linestyle="--", linewidth=1)
-    ax.text(all_base, 2.45, f" average {all_base:.0f}%", fontsize=7.5, color="#374151")
+    ax.text(all_base, 2.45, f" all items: {all_base:.0f}%", fontsize=7.5, color="#374151")
     ax.set_xlabel("All items: % of the 10% highest-ranked items that later had a Production / Market impact")
     ax.tick_params(axis="y", labelsize=8)
     ax.spines[["top", "right"]].set_visible(False)
