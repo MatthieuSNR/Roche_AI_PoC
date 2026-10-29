@@ -775,7 +775,10 @@ def column_picker(key, columns, default=None, order_key=None, visible_key=None, 
     """Panel '▥ Columns' for one table. columns = all displayed names, in their default order; default = the
     columns shown at first (all if None). Returns the columns to show, in the chosen order. The state lives in
     st.session_state (order_key, visible_key), so it survives reruns and can be saved in a view."""
-    from streamlit_sortables import sort_items
+    try:
+        from streamlit_sortables import sort_items
+    except ImportError:   # app started outside the project environment (venv): no drag and drop, the rest works
+        sort_items = None
 
     order_key = order_key or f"{key}_order"
     visible_key = visible_key or f"{key}_visible"
@@ -806,7 +809,9 @@ def column_picker(key, columns, default=None, order_key=None, visible_key=None, 
         with c_order:
             st.caption("Order (drag and drop)")
             shown = [c for c in order if c in st.session_state[visible_key]]
-            if shown:
+            if sort_items is None:
+                st.caption("Not available: start the dashboard with venv/bin/streamlit (package streamlit-sortables).")
+            elif shown:
                 ordered = sort_items(shown, direction="vertical", key=f"{key}_sort_" + "|".join(shown))
                 if ordered and ordered != shown:
                     st.session_state[order_key] = ordered + [c for c in order if c not in ordered]

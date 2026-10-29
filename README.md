@@ -108,9 +108,9 @@ Roche_AI_PoC/
 
 3. **Launch the Streamlit dashboard** (only on this Mac):
    ```bash
-   streamlit run scripts/app.py
+   venv/bin/streamlit run scripts/app.py
    ```
-   The dashboard opens at http://localhost:8501. If `APP_PASSWORD` is set in `.env`, the password page also appears locally.
+   Use the Streamlit of the project environment (`venv/bin/streamlit`, or `streamlit` after `source venv/bin/activate`): another Python (e.g. Anaconda) lacks some packages, such as `streamlit-sortables` for the column order. The dashboard opens at http://localhost:8501. If `APP_PASSWORD` is set in `.env`, the password page also appears locally.
 
 4. **Share the dashboard for a usability test** (testers in their own browser):
    ```bash
