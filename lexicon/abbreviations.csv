@@ -1,196 +1,196 @@
 ﻿abbreviation,match,pattern,applies_to,expansion_de,expansion_en,category,context,confidence,expand,status,comment,reviewer,reviewer_comment
-Stk,ignore_case,,both,Stück,pieces,unit,general,high,yes,proposed,Stk / STK / stk. Trailing full stop is kept as sentence end.,,
-pcs,ignore_case,,both,Stück,pieces,unit,general,high,yes,proposed,,,
-pc,exact,,both,Stück,piece,unit,general,high,yes,proposed,Lower case only.,,
-PC (after a number),regex,(?<=\d)(\s?)PC(?![A-Za-zÄÖÜäöüß0-9]),both,\1Stück,\1pieces,unit,general,high,yes,proposed,,,
-St (after a number),regex,(?<=\d)(\s?)St\.?(?![A-Za-zÄÖÜäöüß0-9]),de,\1Stück,,unit,general,high,yes,proposed,v.,,
-SKT,exact,,de,Stück,pieces,unit,general,medium,no,proposed,,,
-EA (after a number),regex,(?<=\d)(\s?)EA(?![A-Za-zÄÖÜäöüß0-9]),en,,\1pieces,unit,general,high,yes,proposed,,,
+Stk,ignore_case,,both,Stück,pieces,unit,SAP / Unit of Measure,high,yes,validated,Stk / STK / stk. Trailing full stop is kept as sentence end.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+pcs,ignore_case,,both,Stück,pieces,unit,Unit of Measure,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+pc,exact,,both,Stück,piece,unit,SAP / Unit of Measure,high,yes,validated,Lower case only.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+PC (after a number),regex,(?<=\d)(\s?)PC(?![A-Za-zÄÖÜäöüß0-9]),both,\1Stück,\1pieces,unit,SAP / Unit of Measure,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+St (after a number),regex,(?<=\d)(\s?)St\.?(?![A-Za-zÄÖÜäöüß0-9]),de,\1Stück,,unit,SAP / Unit of Measure,high,yes,validated,v.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+SKT,exact,,de,Stück,pieces,unit,Unit of Measure / Part Name,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: Stück (piece) / socket (part description).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+EA (after a number),regex,(?<=\d)(\s?)EA(?![A-Za-zÄÖÜäöüß0-9]),en,,\1pieces,unit,SAP / Unit of Measure,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
 Qty,ignore_case,,both,Menge,quantity,abbreviation,general,high,yes,proposed,,,
-qtys,ignore_case,,both,Mengen,quantities,abbreviation,general,high,yes,proposed,,,
+qtys,ignore_case,,both,Mengen,quantities,abbreviation,General / Quantities,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
 KW + number,regex,"(?<![A-Za-z])KW\s?(\d{1,2}(?:\s?/\s?\d{1,2})?)(?![A-Za-zÄÖÜäöüß0-9])",both,Kalenderwoche \1,calendar week \1,calendar,general,high,yes,proposed,"KW34, KW18/19.",,
 KW,exact,,both,Kalenderwoche,calendar week,calendar,general,high,yes,proposed,,,
-CW + number,regex,"(?<![A-Za-z])CW\s?(\d{1,2})(?![A-Za-zÄÖÜäöüß0-9])",both,Kalenderwoche \1,calendar week \1,calendar,general,high,yes,proposed,CW32 (English notation for KW).,,
-KT (after a number),regex,(?<=\d)(\s?)KT(?![A-Za-zÄÖÜäöüß0-9]),de,\1Kalendertage,,calendar,material planning (MRP),high,yes,proposed,,,
-Mo (before a date),regex,"(?<![A-Za-z])Mo\.?(?=,?\s\d{1,2}\.\d{1,2}\.)",de,Montag,Monday,calendar,general,high,yes,proposed,,,
-Di (before a date),regex,"(?<![A-Za-z])Di\.?(?=,?\s\d{1,2}\.\d{1,2}\.)",de,Dienstag,Tuesday,calendar,general,high,yes,proposed,,,
-Mi (before a date),regex,"(?<![A-Za-z])Mi\.?(?=,?\s\d{1,2}\.\d{1,2}\.)",de,Mittwoch,Wednesday,calendar,general,high,yes,proposed,,,
-Do (before a date),regex,"(?<![A-Za-z])Do\.?(?=,?\s\d{1,2}\.\d{1,2}\.)",de,Donnerstag,Thursday,calendar,general,high,yes,proposed,,,
-Fr (before a date),regex,"(?<![A-Za-z])Fr\.?(?=,?\s\d{1,2}\.\d{1,2}\.)",de,Freitag,Friday,calendar,general,high,yes,proposed,,,
-Sa (before a date),regex,"(?<![A-Za-z])Sa\.?(?=,?\s\d{1,2}\.\d{1,2}\.)",de,Samstag,Saturday,calendar,general,high,yes,proposed,,,
-So (before a date),regex,"(?<![A-Za-z])So\.?(?=,?\s\d{1,2}\.\d{1,2}\.)",de,Sonntag,Sunday,calendar,general,high,yes,proposed,,,
-DO (before a date),regex,"(?<![A-Za-z])DO(?=,?\s\d{1,2}\.\d{1,2}\.)",de,Donnerstag,Thursday,calendar,general,high,yes,proposed,"Weekday in capitals, only when a date follows.",,
-am DO,regex,(?<=\bam )DO(?![A-Za-zÄÖÜäöüß0-9]),de,Donnerstag,Thursday,calendar,general,high,yes,proposed,,,
-ETA,exact,,both,voraussichtliche Ankunft,estimated time of arrival,abbreviation,logistics,high,yes,proposed,Most frequent in the English comments (156 entries).,,
-PO,exact,,both,Bestellung,purchase order,sap_term,procurement,high,yes,proposed,,,
-POs,exact,,both,Bestellungen,purchase orders,sap_term,procurement,high,yes,proposed,,,
-PIR,exact,,both,Einkaufsinfosatz,purchasing info record,sap_term,procurement,high,yes,proposed,"SAP info record (planned delivery time, price...).",,
-GR,exact,,both,Wareneingang,goods receipt,sap_term,logistics,high,yes,proposed,,,
-WE,exact,,de,Wareneingang,goods receipt,abbreviation,logistics,high,yes,proposed,,,
-AB,exact,,de,Auftragsbestätigung,order confirmation,abbreviation,procurement,high,yes,proposed,,,
-LS,exact,,de,Lieferschein,delivery note,abbreviation,logistics,high,yes,proposed,,,
-BANF,exact,,de,Bestellanforderung,purchase requisition,sap_term,procurement,high,yes,proposed,,,
-BANFEN,exact,,de,Bestellanforderungen,purchase requisitions,sap_term,procurement,high,yes,proposed,,,
-P-Reqs,exact,,en,Bestellanforderungen,purchase requisitions,sap_term,procurement,high,yes,proposed,,,
-Reqs,exact,,en,Bedarfe,requirements,abbreviation,material planning (MRP),medium,no,proposed,Requirements or requisitions? Please confirm.,,
-DepReq,exact,,both,Abhängigbedarf,dependent requirement,sap_term,material planning (MRP),high,yes,proposed,SAP MRP element (dependent requirement).,,
-DepReqs,exact,,both,Abhängigbedarfe,dependent requirements,sap_term,material planning (MRP),high,yes,proposed,SAP MRP element (dependent requirement).,,
-PlOrd,ignore_case,,both,Planauftrag,planned order,sap_term,material planning (MRP),high,yes,proposed,SAP MRP element. PLOrd / PlOrd.,,
-PlOrders,ignore_case,,both,Planaufträge,planned orders,sap_term,material planning (MRP),high,yes,proposed,,,
-PrOrd,ignore_case,,both,Fertigungsauftrag,production order,sap_term,production planning,medium,no,proposed,Production order or process order? Please confirm which one Roche uses.,,
-ProdOrder,exact,,en,Fertigungsauftrag,production order,sap_term,production planning,high,yes,proposed,,,
-MtlRes,exact,,both,Materialreservierung,material reservation,sap_term,material planning (MRP),high,yes,proposed,SAP MRP element.,,
-OrdRes,exact,,both,Auftragsreservierung,order reservation,sap_term,material planning (MRP),high,yes,proposed,,,
-SubcSt,exact,,both,Beistellbestand,subcontracting stock,sap_term,material planning (MRP),medium,no,proposed,Please confirm.,,
-ProjST,exact,,both,Projektbestand,project stock,sap_term,material planning (MRP),high,yes,proposed,,,
-MD04,exact,,both,,,sap_code,SAP,high,no,proposed,SAP transaction: stock/requirements list. Kept as is.,,
-MB51,exact,,both,,,sap_code,SAP,high,no,proposed,SAP transaction: material document list. Kept as is.,,
-MatNr,ignore_case,,de,Materialnummer,material number,abbreviation,SAP,high,yes,proposed,,,
-Mat. Doc,regex,(?<![A-Za-z])Mat\.?\s?Doc\.?(?![A-Za-zÄÖÜäöüß0-9]),both,Materialbeleg,material document,sap_term,SAP,high,yes,proposed,,,
-Mat.,exact,,de,Material,material,abbreviation,general,high,yes,proposed,,,
-Nr.,exact_dot,,de,Nummer,number,abbreviation,general,high,yes,proposed,,,
-Prod.,exact,,de,Produktion,production,abbreviation,production planning,high,yes,proposed,,,
-Proc.,exact,,both,Procurement,procurement,abbreviation,procurement,high,yes,proposed,,,
-Purch.,exact,,en,Einkauf,purchasing,abbreviation,procurement,high,yes,proposed,,,
-Val. Class,regex,(?<![A-Za-z])Val\.\s?Class(?![A-Za-zÄÖÜäöüß0-9]),both,Bewertungsklasse,valuation class,sap_term,SAP,high,yes,proposed,,,
-Fa.,exact_dot,,de,Firma,company,abbreviation,general,high,yes,proposed,,,
-Rekla,exact,,de,Reklamation,complaint,clipped_word,quality,high,yes,proposed,,,
-RüMe,exact,,de,Rückmeldung,feedback,clipped_word,general,medium,no,proposed,Please confirm.,,
-RS,exact,,de,Rücksprache,consultation,abbreviation,general,medium,no,proposed,Please confirm.,,
-BG,exact,,de,Baugruppe,assembly,abbreviation,production planning,high,yes,proposed,auf die Mat.,,
-Alu,exact,,de,Aluminium,aluminium,clipped_word,general,high,yes,proposed,,,
-Indy,exact,,en,Indianapolis,Indianapolis,organisation,logistics,high,yes,proposed,Roche site (Indianapolis): to confirm.,,
-CH,exact,,de,Schweiz,Switzerland,abbreviation,logistics,high,yes,proposed,,,
-LT,exact,,both,Liefertermin,lead time / delivery date,abbreviation,material planning (MRP),medium,no,proposed,Most frequent abbreviation and ambiguous: delivery date (Liefertermin) or lead time (Lieferzeit). PLEASE CONFIRM.,,
-PLZ,exact,,de,Planlieferzeit,planned delivery time,sap_term,material planning (MRP),high,yes,proposed,Field of the purchasing info record (planned delivery time); not a postal code.,,
-WBZ,exact,,de,Wiederbeschaffungszeit,replenishment lead time,sap_term,material planning (MRP),high,yes,proposed,,,
-QM,exact,,both,Qualitätsmanagement,quality management,abbreviation,quality,medium,no,proposed,Mostly in QM-Lot (quality inspection lot). Please confirm.,,
-QM-Lot,regex,(?<![A-Za-z])QM[\s\-]?[Ll][Oo][Tt]([Ss]?)(?![A-Za-zÄÖÜäöüß0-9]),both,QM-Prüflos,quality inspection lot\1,sap_term,quality,medium,no,proposed,Please confirm.,,
-VT,exact,,de,Versandtermin,shipping date,abbreviation,logistics,low,no,proposed,Always followed by a date. Guess; please confirm.,,
-HTW,exact,,both,,,abbreviation,material planning (MRP),low,no,proposed,Always followed by a date. Meaning unknown. PLEASE EXPLAIN.,,
-WEP,exact,,de,Wareneingangsprüfung,incoming goods inspection,abbreviation,quality,medium,no,proposed,Please confirm.,,
-IQC,exact,,en,Wareneingangsprüfung,incoming quality control,abbreviation,quality,high,yes,proposed,,,
-FAI,exact,,en,Erstmusterprüfung,first article inspection,abbreviation,quality,high,yes,proposed,,,
-QA,exact,,both,Qualitätssicherung,quality assurance,abbreviation,quality,high,yes,proposed,,,
-QC,exact,,both,Qualitätskontrolle,quality control,abbreviation,quality,medium,no,proposed,Please confirm.,,
-NC,exact,,both,Nichtkonformität,non-conformance,abbreviation,quality,medium,no,proposed,Please confirm.,,
-ECR,exact,,both,Änderungsantrag,engineering change request,abbreviation,production planning,high,yes,proposed,,,
-DCO,exact,,en,Änderungsauftrag,design change order,abbreviation,production planning,medium,no,proposed,Design or document change order? Please confirm.,,
-PPV,exact,,en,,,abbreviation,quality,low,no,proposed,Meaning unknown (production part validation?). PLEASE EXPLAIN.,,
-MOQ,exact,,en,Mindestbestellmenge,minimum order quantity,abbreviation,procurement,high,yes,proposed,,,
-SS,exact,,en,Sicherheitsbestand,safety stock,abbreviation,material planning (MRP),high,yes,proposed,,,
-LTB,exact,,both,letztmalige Bestellung,last time buy,abbreviation,procurement,high,yes,proposed,,,
-obsols.,exact,,de,Obsoleszenz,obsolescence,abbreviation,procurement,medium,no,proposed,Please confirm.,,
-OTIF,exact,,en,pünktlich und vollständig,on time in full,abbreviation,logistics,high,yes,proposed,,,
-OOS,exact,,both,nicht auf Lager,out of stock,abbreviation,material planning (MRP),high,yes,proposed,(In a laboratory context OOS means out of specification.),,
-OEM,exact,,en,Originalhersteller,original equipment manufacturer,abbreviation,procurement,high,yes,proposed,,,
-ASAP,exact,,en,so schnell wie möglich,as soon as possible,abbreviation,general,high,yes,proposed,,,
-TBD,exact,,en,noch festzulegen,to be determined,abbreviation,general,high,yes,proposed,,,
-TBC,exact,,en,noch zu bestätigen,to be confirmed,abbreviation,general,high,yes,proposed,,,
-ASN,exact,,en,Lieferavis,advance shipping notice,abbreviation,logistics,high,yes,proposed,,,
-Trk,exact,,en,Sendungsverfolgung,tracking,abbreviation,logistics,medium,no,proposed,Please confirm.,,
-RTV,exact,,both,Rücklieferung,return to vendor,abbreviation,logistics,high,yes,proposed,,,
-COO,exact,,en,Ursprungsland,country of origin,abbreviation,logistics,high,yes,proposed,,,
-APO,exact,,both,,Advanced Planning and Optimization (SAP),sap_term,SAP,medium,no,proposed,SAP planning system. Kept as is.,,
-MRP,exact,,both,Materialbedarfsplanung,material requirements planning,abbreviation,material planning (MRP),high,yes,proposed,,,
-BOM,exact,,en,Stückliste,bill of materials,abbreviation,production planning,high,yes,proposed,,,
-FIFO,exact,,en,,"first in, first out",abbreviation,logistics,high,no,proposed,"Common term, kept as is.",,
-VMI,exact,,both,lieferantengesteuerter Bestand,vendor managed inventory,abbreviation,procurement,high,yes,proposed,,,
-PCBA,exact,,both,bestückte Leiterplatte,printed circuit board assembly,abbreviation,production planning,high,yes,proposed,,,
-PCB,exact,,both,Leiterplatte,printed circuit board,abbreviation,production planning,high,yes,proposed,,,
-CNC,exact,,both,CNC-Bearbeitung,CNC machining,abbreviation,production planning,medium,no,proposed,Kept as is.,,
-R&D,exact,,en,Forschung und Entwicklung,research and development,abbreviation,general,high,yes,proposed,,,
-ERP,exact,,en,,enterprise resource planning,abbreviation,SAP,high,no,proposed,Kept as is.,,
-FC,exact,,both,Prognose,forecast,abbreviation,material planning (MRP),medium,no,proposed,Please confirm.,,
-FG,exact,,en,Fertigerzeugnis,finished goods,abbreviation,production planning,medium,no,proposed,Please confirm.,,
-CC,exact,,en,Kostenstelle,cost center,abbreviation,procurement,medium,no,proposed,Please confirm.,,
-SL,exact,,de,Quellenliste,source list,sap_term,procurement,medium,no,proposed,Please confirm.,,
-TN,exact,,en,Sendungsnummer,tracking number,abbreviation,logistics,low,no,proposed,Please confirm.,,
-PL,exact,,en,Packliste,packing list,abbreviation,logistics,low,no,proposed,Please confirm.,,
-W/A,exact,,en,,,abbreviation,logistics,low,no,proposed,Meaning unknown. PLEASE EXPLAIN.,,
-LA,exact,,de,,,abbreviation,logistics,low,no,proposed,Meaning unknown. PLEASE EXPLAIN.,,
-MA,exact,,de,,,abbreviation,logistics,low,no,proposed,Meaning unknown. PLEASE EXPLAIN.,,
-ND,exact,,de,,,abbreviation,material planning (MRP),low,no,proposed,Meaning unknown. PLEASE EXPLAIN.,,
-EB,exact,,de,,,abbreviation,production planning,low,no,proposed,Meaning unknown. PLEASE EXPLAIN.,,
-GL,exact,,de,Geschäftsleitung,management,abbreviation,general,low,no,proposed,Guess; please confirm.,,
-TF,exact,,en,,,abbreviation,SAP,low,no,proposed,Please confirm.,,
-BP,exact,,de,,,abbreviation,quality,low,no,proposed,Meaning unknown. PLEASE EXPLAIN.,,
-ca.,ignore_case,,de,circa,approximately,abbreviation,general,high,yes,proposed,,,
-bzw.,ignore_case,,de,beziehungsweise,respectively,abbreviation,general,high,yes,proposed,,,
-bzgl.,ignore_case,,de,bezüglich,regarding,abbreviation,general,high,yes,proposed,,,
-ggf.,ignore_case,,de,gegebenenfalls,if necessary,abbreviation,general,high,yes,proposed,,,
-vsl.,ignore_case,,de,voraussichtlich,expected,abbreviation,general,high,yes,proposed,,,
-mgl.,ignore_case,,de,möglich,possible,abbreviation,general,high,yes,proposed,,,
-mglw.,ignore_case,,de,möglicherweise,possibly,abbreviation,general,high,yes,proposed,,,
-gem.,exact,,de,gemäß,according to,abbreviation,general,high,yes,proposed,,,
-lt.,exact_dot,,de,laut,according to,abbreviation,general,high,yes,proposed,Needs the full stop.,,
-u.,exact_dot,,de,und,and,abbreviation,general,high,yes,proposed,Needs the full stop.,,
-v.,exact_dot,,de,von,of,abbreviation,general,high,yes,proposed,v. Needs the full stop.,,
-i.O.,ignore_case,,de,in Ordnung,OK,abbreviation,quality,high,yes,proposed,,,
-n.i.O.,ignore_case,,de,nicht in Ordnung,not OK,abbreviation,quality,high,yes,proposed,,,
-div.,exact,,de,diverse,various,abbreviation,general,high,yes,proposed,,,
-mind.,exact_dot,,de,mindestens,at least,abbreviation,general,high,yes,proposed,,,
-kompl.,exact,,de,komplett,complete,abbreviation,general,high,yes,proposed,,,
-kurzf.,exact,,de,kurzfristig,short-term,abbreviation,general,high,yes,proposed,,,
-wtl.,ignore_case,,de,,,abbreviation,general,low,no,proposed,Please confirm.,,
-best.,exact_dot,,de,,,abbreviation,general,low,no,proposed,PLEASE EXPLAIN.,,
-VG,exact,,de,Viele Grüße,kind regards,greeting,general,high,yes,proposed,Closing of a message.,,
-LG,exact,,de,Liebe Grüße,kind regards,greeting,general,high,yes,proposed,Closing of a message.,,
-RDA,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-SKR,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-TSM,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-SVI,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-SMC,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-KWM,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-MML,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-AFC,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-TASE,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-OSP,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-IPT,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-DEV,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-RDI,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-RSO,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-SYSA,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-ELRA,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-EMPB,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-GTP,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-HEI,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-GEP,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-DSV,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-DB,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-GW,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-KH,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-SIE,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-IMA,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-ICPO,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-OMP,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-ADAPT,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-ADP,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-TTZ,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-LE,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-RI,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-DHL,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-HP,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-SRV,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-IRF,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-ST,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-HTW1,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-HTW2,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-PX,exact,,both,,,organisation,unknown,low,no,proposed,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",,
-PX13,exact,,both,,,product_code,production planning,low,no,proposed,"Product, instrument or series code, not an abbreviation to expand. Please confirm what it stands for.",,
-X13,exact,,both,,,product_code,production planning,low,no,proposed,"Product, instrument or series code, not an abbreviation to expand. Please confirm what it stands for.",,
-YUP4,exact,,both,,,product_code,production planning,low,no,proposed,"Product, instrument or series code, not an abbreviation to expand. Please confirm what it stands for.",,
-YUP5,exact,,both,,,product_code,production planning,low,no,proposed,"Product, instrument or series code, not an abbreviation to expand. Please confirm what it stands for.",,
-HE600,exact,,both,,,product_code,production planning,low,no,proposed,"Product, instrument or series code, not an abbreviation to expand. Please confirm what it stands for.",,
-GX,exact,,both,,,product_code,production planning,low,no,proposed,"Product, instrument or series code, not an abbreviation to expand. Please confirm what it stands for.",,
-BSS,exact,,both,,,product_code,production planning,low,no,proposed,"Product, instrument or series code, not an abbreviation to expand. Please confirm what it stands for.",,
-XP,exact,,both,,,product_code,production planning,low,no,proposed,"Product, instrument or series code, not an abbreviation to expand. Please confirm what it stands for.",,
-EC1,exact,,both,,,product_code,production planning,low,no,proposed,"Product, instrument or series code, not an abbreviation to expand. Please confirm what it stands for.",,
-UCM1,exact,,both,,,product_code,production planning,low,no,proposed,"Product, instrument or series code, not an abbreviation to expand. Please confirm what it stands for.",,
-P471,exact,,both,,,product_code,production planning,low,no,proposed,"Product, instrument or series code, not an abbreviation to expand. Please confirm what it stands for.",,
-CCM,exact,,both,,,product_code,production planning,low,no,proposed,"Product, instrument or series code, not an abbreviation to expand. Please confirm what it stands for.",,
-RRF,exact,,both,,,product_code,production planning,low,no,proposed,"Product, instrument or series code, not an abbreviation to expand. Please confirm what it stands for.",,
-ULTRA,exact,,both,,,product_code,production planning,low,no,proposed,"Product, instrument or series code, not an abbreviation to expand. Please confirm what it stands for.",,
-SVC,exact,,both,,,product_code,production planning,low,no,proposed,"Product, instrument or series code, not an abbreviation to expand. Please confirm what it stands for.",,
-Svc,exact,,both,,,product_code,production planning,low,no,proposed,"Product, instrument or series code, not an abbreviation to expand. Please confirm what it stands for.",,
-LHO,exact,,de,,,person_initials,general,high,no,proposed,,,
+CW + number,regex,"(?<![A-Za-z])CW\s?(\d{1,2})(?![A-Za-zÄÖÜäöüß0-9])",both,Kalenderwoche \1,calendar week \1,calendar,Planning & Scheduling,high,yes,validated,CW32 (English notation for KW).,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+KT (after a number),regex,(?<=\d)(\s?)KT(?![A-Za-zÄÖÜäöüß0-9]),de,\1Kalendertage,\1 calendar days,calendar,Lead Time & Planning,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Mo (before a date),regex,"(?<![A-Za-z])Mo\.?(?=,?\s\d{1,2}\.\d{1,2}\.)",both,Montag,Monday,calendar,Date Format,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Di (before a date),regex,"(?<![A-Za-z])Di\.?(?=,?\s\d{1,2}\.\d{1,2}\.)",de,Dienstag,Tuesday,calendar,General German / Date,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Mi (before a date),regex,"(?<![A-Za-z])Mi\.?(?=,?\s\d{1,2}\.\d{1,2}\.)",both,Mittwoch,Wednesday,calendar,Date Format,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Do (before a date),regex,"(?<![A-Za-z])Do\.?(?=,?\s\d{1,2}\.\d{1,2}\.)",both,Donnerstag,Thursday,calendar,General German / Date,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Fr (before a date),regex,"(?<![A-Za-z])Fr\.?(?=,?\s\d{1,2}\.\d{1,2}\.)",de,Freitag,Friday,calendar,General German / Date,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Sa (before a date),regex,"(?<![A-Za-z])Sa\.?(?=,?\s\d{1,2}\.\d{1,2}\.)",de,Samstag,Saturday,calendar,General German / Date,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+So (before a date),regex,"(?<![A-Za-z])So\.?(?=,?\s\d{1,2}\.\d{1,2}\.)",de,Sonntag,Sunday,calendar,General German / Date,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+DO (before a date),regex,"(?<![A-Za-z])DO(?=,?\s\d{1,2}\.\d{1,2}\.)",de,Donnerstag,Thursday,calendar,General German / Date,high,yes,validated,"Weekday in capitals, only when a date follows.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+am DO,regex,(?<=\bam )DO(?![A-Za-zÄÖÜäöüß0-9]),de,Donnerstag,Thursday,calendar,General German / Date,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+ETA,exact,,both,voraussichtliche Ankunft,estimated time of arrival,abbreviation,Inbound Logistics,high,yes,validated,Most frequent in the English comments (156 entries).,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+PO,exact,,both,Bestellung,purchase order,sap_term,SAP / Purchasing,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+POs,exact,,both,Bestellungen,purchase orders,sap_term,SAP / Purchasing,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+PIR,exact,,both,Einkaufsinfosatz,purchasing info record,sap_term,SAP / Purchasing,high,yes,validated,"SAP info record (planned delivery time, price...).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+GR,exact,,both,Wareneingang,goods receipt,sap_term,SAP / Inventory & Receiving,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+WE,exact,,both,Wareneingang,goods receipt,abbreviation,SAP / Inventory & Receiving,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+AB,exact,,both,Auftragsbestätigung,order confirmation,abbreviation,SAP / Purchasing,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+LS,exact,,both,Lieferschein,delivery note,abbreviation,SAP / Shipping,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+BANF,exact,,de,Bestellanforderung,purchase requisition,sap_term,SAP / Purchasing,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+BANFEN,exact,,both,Bestellanforderungen,purchase requisitions,sap_term,SAP / Purchasing,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+P-Reqs,exact,,both,Bestellanforderungen,purchase requisitions,sap_term,SAP / Purchasing,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Reqs,exact,,both,Bedarfe,requirements,abbreviation,SAP / Planning,high,yes,validated,Requirements or requisitions? Please confirm.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+DepReq,exact,,both,Abhängigbedarf,dependent requirement,sap_term,SAP / MRP & Planning,high,yes,validated,SAP MRP element (dependent requirement).,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+DepReqs,exact,,both,Abhängigbedarfe,dependent requirements,sap_term,SAP / MRP & Planning,high,yes,validated,SAP MRP element (dependent requirement).,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+PlOrd,ignore_case,,both,Planauftrag,planned order,sap_term,SAP / Planning,high,yes,validated,SAP MRP element. PLOrd / PlOrd.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+PlOrders,ignore_case,,both,Planaufträge,planned orders,sap_term,SAP / Planning,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+PrOrd,ignore_case,,both,Fertigungsauftrag,production order,sap_term,SAP / Production,high,yes,validated,Production order or process order? Please confirm which one Roche uses.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+ProdOrder,exact,,both,Fertigungsauftrag,production order,sap_term,SAP / Production,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+MtlRes,exact,,both,Materialreservierung,material reservation,sap_term,SAP / Inventory,high,yes,validated,SAP MRP element.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+OrdRes,exact,,both,Auftragsreservierung,order reservation,sap_term,SAP / Inventory,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+SubcSt,exact,,both,Beistellbestand,subcontracting stock,sap_term,SAP / Inventory,high,yes,validated,Please confirm.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+ProjST,exact,,both,Projektbestand,project stock,sap_term,SAP / Inventory,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+MD04,exact,,both,,,sap_code,SAP Transaction,high,no,validated,"Name, kept as written: SAP transaction (stock/requirements list).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+MB51,exact,,both,,,sap_code,SAP Transaction,high,no,validated,"Name, kept as written: SAP transaction (material document list).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+MatNr,ignore_case,,both,Materialnummer,material number,abbreviation,SAP / Master Data,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Mat. Doc,regex,(?<![A-Za-z])Mat\.?\s?Doc\.?(?![A-Za-zÄÖÜäöüß0-9]),both,Materialbeleg,material document,sap_term,SAP / Inventory,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Mat.,exact,,both,Material,material,abbreviation,SAP / Master Data,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Nr.,exact_dot,,both,Nummer,number,abbreviation,General German,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Prod.,exact,,de,Produktion,production,abbreviation,Organization / Department,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Proc.,exact,,both,Procurement,procurement,abbreviation,Organization / Department,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Purch.,exact,,both,Einkauf,purchasing,abbreviation,Organization / Department,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Val. Class,regex,(?<![A-Za-z])Val\.\s?Class(?![A-Za-zÄÖÜäöüß0-9]),both,Bewertungsklasse,valuation class,sap_term,SAP / Accounting & Master Data,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Fa.,exact_dot,,both,Firma,company,abbreviation,Business / General German,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Rekla,exact,,both,Reklamation,complaint,clipped_word,Quality & Customer Service,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+RüMe,exact,,de,Rückmeldung,feedback,clipped_word,SAP / Production & Order Status,medium,no,validated,"Several meanings, not written out: feedback / confirmation (Rückmeldung).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+RS,exact,,de,Rücksprache,consultation,abbreviation,Planner Comments / Email,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: Rücksprache (consultation / alignment).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+BG,exact,,de,Baugruppe,assembly,abbreviation,SAP / Engineering & Master Data,high,yes,validated,auf die Mat.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Alu,exact,,de,Aluminium,aluminium,clipped_word,Material / Supplier Name,medium,no,validated,"Several meanings, not written out: aluminium, or the name of a supplier.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Indy,exact,,en,Indianapolis,Indianapolis,organisation,Roche Site / Location,high,yes,validated,Roche site (Indianapolis): to confirm.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+CH,exact,,de,Schweiz,Switzerland,abbreviation,General / Country Code,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+LT,exact,,de,Liefertermin,lead time / delivery date,abbreviation,Planning & Logistics,high,yes,validated,Most frequent abbreviation and ambiguous: delivery date (Liefertermin) or lead time (Lieferzeit). PLEASE CONFIRM.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+PLZ,exact,,both,Planlieferzeit,planned delivery time,sap_term,SAP / Master Data,high,yes,validated,Field of the purchasing info record (planned delivery time); not a postal code.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+WBZ,exact,,de,Wiederbeschaffungszeit,replenishment lead time,sap_term,SAP / Master Data & MRP,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+QM,exact,,both,Qualitätsmanagement,quality management,abbreviation,SAP / Quality Module,high,yes,validated,Mostly in QM-Lot (quality inspection lot). Please confirm.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+QM-Lot,regex,(?<![A-Za-z])QM[\s\-]?[Ll][Oo][Tt]([Ss]?)(?![A-Za-zÄÖÜäöüß0-9]),both,Prüflos,quality inspection lot\1,sap_term,SAP / Quality Module,high,yes,validated,Please confirm.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+VT,exact,,de,Versandtermin,shipping date,abbreviation,SAP / Shipping & Logistics,high,yes,validated,Always followed by a date. Guess; please confirm.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+HTW,exact,,both,,,abbreviation,Planning & Supply Chain,high,no,validated,"Name, kept as written: hit the wall (out-of-stock date).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+WEP,exact,,de,Wareneingangsprüfung,goods receipt inspection,abbreviation,SAP / Quality Inspection,high,yes,validated,Please confirm.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+IQC,exact,,en,Wareneingangsprüfung,incoming quality control,abbreviation,Quality Management (QM),high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+FAI,exact,,both,Erstmusterprüfung,first article inspection,abbreviation,Quality Management (QM),high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+QA,exact,,both,Qualitätssicherung,quality assurance,abbreviation,Organization / Quality,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+QC,exact,,both,Qualitätskontrolle,quality control,abbreviation,Organization / Quality,high,yes,validated,Please confirm.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+NC,exact,,both,Nichtkonformität,non-conformity,abbreviation,Quality Management (QM),high,yes,validated,Please confirm.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+ECR,exact,,both,Änderungsantrag,engineering change request,abbreviation,Engineering / Change Management,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+DCO,exact,,en,Änderungsauftrag,design change order,abbreviation,Quality & Engineering,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: design change order / document change order.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+PPV,exact,,en,,,abbreviation,Finance & Procurement,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: purchase price variance.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+MOQ,exact,,both,Mindestbestellmenge,minimum order quantity,abbreviation,Purchasing & Procurement,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+SS,exact,,both,Sicherheitsbestand,safety stock,abbreviation,SAP / Planning,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+LTB,exact,,both,letztmalige Bestellung,last time buy,abbreviation,Lifecycle / Procurement,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+obsols.,exact,,both,Obsoleszenz,obsolescence,abbreviation,Lifecycle Management,high,yes,validated,Please confirm.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+OTIF,exact,,both,On Time In Full,on time in full,abbreviation,Supply Chain KPI,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+OOS,exact,,both,nicht auf Lager,out of stock,abbreviation,Inventory & Warehouse,high,yes,validated,(In a laboratory context OOS means out of specification.),Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+OEM,exact,,both,Originalhersteller,original equipment manufacturer,abbreviation,Procurement & Manufacturing,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+ASAP,exact,,both,so schnell wie möglich,as soon as possible,abbreviation,Email / Communication,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+TBD,exact,,both,noch festzulegen,to be determined,abbreviation,Project Management / Status,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+TBC,exact,,both,noch zu bestätigen,to be confirmed,abbreviation,Project Management / Status,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+ASN,exact,,both,Lieferavis,advance shipping notice,abbreviation,SAP / Inbound Logistics,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Trk,exact,,en,Sendungsverfolgung,tracking,abbreviation,Logistics & Shipping,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: tracking (Sendungsverfolgung).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+RTV,exact,,both,Rücklieferung,return to vendor,abbreviation,SAP / Shipping & Quality,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+COO,exact,,both,Ursprungsland,country of origin,abbreviation,SAP / Trade & Compliance,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+APO,exact,,both,,,sap_term,SAP System Module,high,no,validated,"Name, kept as written: Advanced Planning and Optimization (SAP).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+MRP,exact,,both,Materialbedarfsplanung,material requirements planning,abbreviation,SAP / Planning,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+BOM,exact,,both,Stückliste,bill of materials,abbreviation,SAP / Master Data,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+FIFO,exact,,en,,"first in, first out",abbreviation,Warehouse / Inventory Strategy,high,no,validated,"Common term, kept as is.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+VMI,exact,,both,lieferantengesteuerter Bestand,vendor managed inventory,abbreviation,Supply Chain Strategy,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+PCBA,exact,,both,bestückte Leiterplatte,printed circuit board assembly,abbreviation,Electronics / Component,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+PCB,exact,,both,Leiterplatte,printed circuit board,abbreviation,Electronics / Component,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+CNC,exact,,both,CNC-Bearbeitung,CNC machining,abbreviation,Production & Machining,medium,no,validated,"Several meanings, not written out: CNC machining.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+R&D,exact,,en,Forschung und Entwicklung,research and development,abbreviation,Organization / Department,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+ERP,exact,,en,,enterprise resource planning,abbreviation,IT Systems,high,no,validated,Kept as is.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+FC,exact,,both,Prognose,forecast,abbreviation,Planning & Supply Chain,high,yes,validated,Please confirm.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+FG,exact,,en,Fertigerzeugnis,finished goods,abbreviation,SAP / Inventory,high,yes,validated,Please confirm.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+CC,exact,,en,Kostenstelle,cost center,abbreviation,Finance / Email,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: cost center / carbon copy (e-mail).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+SL,exact,,both,Orderbuch,source list,sap_term,SAP / Purchasing,high,yes,validated,Please confirm.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+TN,exact,,en,Sendungsnummer,tracking number,abbreviation,Logistics & Shipping,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: tracking number.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+PL,exact,,en,Packliste,packing list,abbreviation,Logistics & Department,low,no,validated,"Several meanings, not written out: packing list / planning department / product lead.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+W/A,exact,,en,,,abbreviation,SAP / Warehouse & Logistics,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: goods receipt/issue (WE/WA) / workaround.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+LA,exact,,de,,,abbreviation,SAP / Inbound Logistics,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: Lieferavis (advance shipping notice).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+MA,exact,,de,,,abbreviation,SAP Master Data / Site,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: material / Roche Mannheim site.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+ND,exact,,de,,,abbreviation,SAP / Master Data,high,no,validated,"Name, kept as written: MRP type in SAP: no planning.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+EB,exact,,de,,,organisation,Supplier / Vendor Name,high,no,validated,"Name of a supplier or a logistics provider: kept as written (the name is in the review sheet, not in this public library).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+GL,exact,,de,Geschäftsleitung,executive management,abbreviation,Organization / Management,high,yes,validated,Guess; please confirm.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+TF,exact,,en,,,abbreviation,Quality / Logistics,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: technical file / transfer flag.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+BP,exact,,de,,,abbreviation,SAP Master Data / Project,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: business partner / blueprint.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+ca.,ignore_case,,de,circa,approximately,abbreviation,General German / Email,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+bzw.,ignore_case,,de,beziehungsweise,respectively,abbreviation,General German / Email,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+bzgl.,ignore_case,,de,bezüglich,regarding,abbreviation,General German / Email,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+ggf.,ignore_case,,de,gegebenenfalls,if necessary,abbreviation,General German / Email,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+vsl.,ignore_case,,both,voraussichtlich,expected,abbreviation,General German / Schedule,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+mgl.,ignore_case,,de,möglich,possible,abbreviation,General German / Email,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+mglw.,ignore_case,,both,möglicherweise,possibly,abbreviation,General German / Email,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+gem.,exact,,de,gemäß,according to,abbreviation,General German / Email,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+lt.,exact_dot,,de,laut,according to,abbreviation,General German / Email,high,yes,validated,Needs the full stop.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+u.,exact_dot,,both,und,and,abbreviation,General German,high,yes,validated,Needs the full stop.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+v.,exact_dot,,de,von,of,abbreviation,General German,high,yes,validated,v. Needs the full stop.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+i.O.,ignore_case,,both,in Ordnung,OK,abbreviation,Quality & Status,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+n.i.O.,ignore_case,,both,nicht in Ordnung,not OK,abbreviation,Quality & Status,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+div.,exact,,both,diverse,various,abbreviation,General / Miscellaneous,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+mind.,exact_dot,,both,mindestens,at least,abbreviation,General German / Quantity,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+kompl.,exact,,de,komplett,complete,abbreviation,General German / Status,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+kurzf.,exact,,both,kurzfristig,short-term,abbreviation,General German / Schedule,high,yes,validated,,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+wtl.,ignore_case,,both,wöchentlich,weekly,abbreviation,Schedule & Frequency,high,yes,validated,Please confirm.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+best.,exact_dot,,de,bestellt,ordered,abbreviation,Planner Comments / Status,high,yes,validated,PLEASE EXPLAIN.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+VG,exact,,de,Viele Grüße,kind regards,greeting,Email / Sign-off,high,yes,validated,Closing of a message.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+LG,exact,,de,Liebe Grüße,kind regards,greeting,Email / Sign-off,high,yes,validated,Closing of a message.,Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+RDA,exact,,both,,,organisation,Roche Entity Name,high,no,validated,"Name, kept as written: Roche Diagnostics Automation Solutions GmbH.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+SKR,exact,,both,,,organisation,Supplier / Vendor Name,high,no,validated,"Name of a supplier or a logistics provider: kept as written (the name is in the review sheet, not in this public library).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+TSM,exact,,both,,,organisation,Organization / Department,high,no,validated,"Name, kept as written: Technical Supplier Management (department; also a root cause prefix).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+SVI,exact,,both,,,organisation,Supplier / Vendor Name,high,no,validated,"Name of a supplier or a logistics provider: kept as written (the name is in the review sheet, not in this public library).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+SMC,exact,,both,,,organisation,Supplier / Vendor Name,high,no,validated,"Name of a supplier or a logistics provider: kept as written (the name is in the review sheet, not in this public library).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+KWM,exact,,both,,,organisation,Supplier / Vendor Name,high,no,validated,"Name of a supplier or a logistics provider: kept as written (the name is in the review sheet, not in this public library).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+MML,exact,,both,,,organisation,Supplier / Vendor Name,high,no,validated,"Name of a supplier or a logistics provider: kept as written (the name is in the review sheet, not in this public library).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+AFC,exact,,both,,,abbreviation,Engineering & Quality,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: approved for construction / advance flow control.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+TASE,exact,,both,,,organisation,Supplier / Vendor Name,high,no,validated,"Name of a supplier or a logistics provider: kept as written (the name is in the review sheet, not in this public library).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+OSP,exact,,both,,,abbreviation,Production / Subcontracting,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: outside process / outside service provider.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+IPT,exact,,both,,,abbreviation,Project Management / Operations,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: international project team / instrument processing team.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+DEV,exact,,both,,,abbreviation,Quality Management (QM),low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: deviation (Abweichung).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+RDI,exact,,both,,,organisation,Roche Entity Name,high,no,validated,"Name, kept as written: Roche Diagnostics International AG.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+RSO,exact,,both,,,abbreviation,SAP / Customer Service (SD/CS),low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: return sales order / repair service order.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+SYSA,exact,,both,,,organisation,Supplier / Vendor Name,high,no,validated,"Name of a supplier or a logistics provider: kept as written (the name is in the review sheet, not in this public library).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+ELRA,exact,,both,,,organisation,Supplier / Vendor Name,high,no,validated,"Name of a supplier or a logistics provider: kept as written (the name is in the review sheet, not in this public library).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+EMPB,exact,,both,Erstmusterprüfbericht,first article inspection report,organisation,Quality Management (QM),high,yes,validated,"Name or code of a company, site or system, not to be expanded. Please say what it is, so it can be handled correctly.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+GTP,exact,,both,,,organisation,Supplier / Vendor Name,high,no,validated,"Name of a supplier or a logistics provider: kept as written (the name is in the review sheet, not in this public library).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+HEI,exact,,both,,,abbreviation,Supplier Location / Part Type,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: Heidenheim plant location / heating component.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+GEP,exact,,both,,,organisation,Procurement Platform,high,no,validated,"Name, kept as written: supplier collaboration platform iCollab / GEP NEXXE.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+DSV,exact,,both,,,organisation,Logistics / Freight Carrier,high,no,validated,"Name of a supplier or a logistics provider: kept as written (the name is in the review sheet, not in this public library).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+DB,exact,,both,,,abbreviation,Finance / Purchasing,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: contribution margin (Deckungsbeitrag) / direct PO.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+GW,exact,,both,,,organisation,Logistics / Freight Carrier,high,no,validated,"Name of a supplier or a logistics provider: kept as written (the name is in the review sheet, not in this public library).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+KH,exact,,both,,,organisation,Supplier / Vendor Name,high,no,validated,"Name of a supplier or a logistics provider: kept as written (the name is in the review sheet, not in this public library).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+SIE,exact,,both,,,organisation,Roche Department / Team,high,no,validated,"Name, kept as written: Scientific Insights and Engineering (department).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+IMA,exact,,both,,,organisation,Supplier / Vendor Name,high,no,validated,"Name of a supplier or a logistics provider: kept as written (the name is in the review sheet, not in this public library).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+ICPO,exact,,both,,,abbreviation,SAP / Purchasing,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: intercompany purchase order.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+OMP,exact,,both,,,organisation,Planning Software,high,no,validated,"Name, kept as written: new planning tool coming with Aspire.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+ADAPT,exact,,both,,,organisation,Supplier / Vendor Name,high,no,validated,"Name of a supplier or a logistics provider: kept as written (the name is in the review sheet, not in this public library).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+ADP,exact,,both,,,abbreviation,IT / Operations,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: automated data processing / adaptation.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+TTZ,exact,,both,,,organisation,Component Identifier,high,no,validated,"Name, kept as written: part of material descriptions in Ludwigsburg.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+LE,exact,,both,,,abbreviation,SAP / Warehouse & Logistics,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: Liefereinheit (delivery unit) / Lagerort (storage location).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+RI,exact,,both,,,abbreviation,SAP Finance / Quality,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: Rechnungseingang (invoice receipt) / receiving inspection.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+DHL,exact,,both,,,organisation,Logistics / Freight Carrier,high,no,validated,"Name of a supplier or a logistics provider: kept as written (the name is in the review sheet, not in this public library).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+HP,exact,,both,,,organisation,Supplier / IT Hardware,high,no,validated,"Name of a supplier or a logistics provider: kept as written (the name is in the review sheet, not in this public library).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+SRV,exact,,both,,,abbreviation,Vendor Management / Quality,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: safety reporting vendor / service request.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+IRF,exact,,both,,,abbreviation,Quality Management (QM),low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: inspection request form.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+ST,exact,,both,,,abbreviation,SAP / Master Data & MRP,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: Stück (piece) / safety time (Sicherheitszeit).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+HTW1,exact,,both,,,organisation,Planning & Supply Chain,high,no,validated,"Name, kept as written: hit the wall date 1.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+HTW2,exact,,both,,,organisation,Planning & Supply Chain,high,no,validated,"Name, kept as written: hit the wall date 2.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+PX,exact,,both,,,product_code,Roche Instrument Naming,high,no,validated,"Name, kept as written: instrument name with placeholder (px01 = p501 / 701).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+PX13,exact,,both,,,product_code,Roche Instrument Name,high,no,validated,"Name, kept as written: instrument cobas ultra (px13).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+X13,exact,,both,,,product_code,Roche Instrument Name,high,no,validated,"Name, kept as written: instrument cobas ultra (px13).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+YUP4,exact,,both,,,product_code,SAP / Master Data,high,no,validated,"Name, kept as written: MRP group in SAP: 3rd supplier restock PO (YUNB).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+YUP5,exact,,both,,,product_code,SAP / Master Data,high,no,validated,"Name, kept as written: MRP group in SAP: 3rd supplier with planned order (YUNB).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+HE600,exact,,both,,,product_code,Roche Instrument / Site,high,no,validated,"Name, kept as written: HE 600 staining system (Tucson instrument).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+GX,exact,,both,,,abbreviation,Logistics & Operations,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: global express / authorization.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+BSS,exact,,both,,,abbreviation,EHS / Quality Management,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: safety data sheet (Betriebs- und Sicherheitsdatenblatt).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+XP,exact,,both,,,abbreviation,Logistics & Shipping,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: express shipment / cross-plant.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+EC1,exact,,both,,,product_code,Roche Instrument / Module,high,no,validated,"Name, kept as written: module in Ludwigsburg (type of centrifuge).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+UCM1,exact,,both,,,product_code,Roche Instrument / Module,high,no,validated,"Name, kept as written: instrument type in Ludwigsburg.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+P471,exact,,both,,,product_code,Roche Instrument / Module,high,no,validated,"Name, kept as written: instrument type in Ludwigsburg.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+CCM,exact,,both,,,product_code,Roche Instrument / Module,high,no,validated,"Name, kept as written: module in Ludwigsburg (cobas Connection Module).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+RRF,exact,,both,,,product_code,Roche Instrument Name,high,no,validated,"Name, kept as written: Rack Reformatter (instrument in Ludwigsburg).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+ULTRA,exact,,both,,,product_code,Roche Instrument Name,high,no,validated,"Name, kept as written: instrument (cobas ultra px13 / BenchMark ULTRA).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+SVC,exact,,both,,,product_code,Customer Service / Material Master,high,no,validated,"Name, kept as written: part of material descriptions in Tucson (e.g. VALVE 2/2 LIQUID CC1 SVC).",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+Svc,exact,,both,,,product_code,Material Description (Tucson Site),high,no,validated,"Name, kept as written: part of material descriptions in Tucson.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"
+LHO,exact,,de,,,person_initials,Logistics / Purchasing,low,no,to confirm,"Proposed meaning (Alexis, 28.10), still to confirm by the planners: local handling office / vendor origin location.",Matthieu Sanner; Alexis,"Review 28.10: Matthieu Sanner (OK / ?), Alexis (meaning, context)"

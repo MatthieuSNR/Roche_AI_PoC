@@ -129,6 +129,13 @@ def test_expand_comment_works_entry_by_entry():
     assert out == "12 Stück in QM ¦▸ Auftragsbestätigung angefragt ¦▸ Estimated time of arrival calendar week 34"
 
 
+def test_a_meaning_that_another_row_would_expand_again_is_reported():
+    lib = library(("QM-Lot", "regex", r"QM[\s\-]?Lot", "both", "QM-Prüflos", "inspection lot", "yes"),
+                  ("QM", "exact", "", "both", "Qualitätsmanagement", "quality management", "yes"))
+    problems = ab._expanded_twice(lib)
+    assert len(problems) == 1 and "QM-Lot" in problems[0]
+
+
 def test_the_library_file_is_valid_and_consistent():
     assert ab.validate() == []
     table = ab.load_library().table
@@ -143,7 +150,11 @@ def test_real_library_on_typical_entries():
     lib = ab.load_library()
     assert ab.expand_text("3 STK werden am DO von SKR zugestellt", "de", lib) == "3 Stück werden am Donnerstag von SKR zugestellt"
     assert ab.expand_text("PLZ im PIR = 56 Tage", "de", lib) == "Planlieferzeit im Einkaufsinfosatz = 56 Tage"
-    assert ab.expand_text("LT erst im Oktober", "de", lib) == "LT erst im Oktober"          # to be confirmed by the planners
+    # review of 28.10: LT = Liefertermin in German; in English lead time or delivery date: left as written
+    assert ab.expand_text("LT erst im Oktober", "de", lib) == "Liefertermin erst im Oktober"
+    assert ab.expand_text("LT moved to October", "en", lib) == "LT moved to October"
+    assert ab.expand_text("Lieferung wtl. per DHL", "de", lib) == "Lieferung wöchentlich per DHL"   # names kept
+    assert ab.expand_text("DEV opened", "en", lib) == "DEV opened"                           # still to confirm
     assert ab.expand_text("283 PC werden versendet", "de", lib) == "283 Stück werden versendet"   # no 'Stückück'
 
 

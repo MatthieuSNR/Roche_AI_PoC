@@ -136,6 +136,24 @@ def validate(path=LIBRARY_PATH):
                 problems.append(f"line {line}: invalid pattern ({exc})")
     dup = table[table.duplicated(["abbreviation", "match"], keep=False)]
     problems += [f"duplicate row: {a} ({m})" for a, m in zip(dup["abbreviation"], dup["match"])]
+    if not problems:
+        problems += _expanded_twice(Library(table))
+    return problems
+
+
+def _expanded_twice(library):
+    """A written-out meaning that another row would write out again ("QM-Prüflos" -> "Qualitätsmanagement-
+    Prüflos"): the rows are applied one after the other, so the meaning must not contain another abbreviation."""
+    problems = []
+    for rule in library.rules:
+        for lang in ("de", "en"):
+            if not rule.expand or rule.applies_to not in ("both", lang):
+                continue
+            text = rule.expansion(lang).replace("\\1", "")
+            for other in library.rules:
+                if other is not rule and other.expand and other.applies_to in ("both", lang) and other.regex.search(text):
+                    problems.append(f"'{rule.abbreviation}' ({lang}): its meaning '{text}' would be expanded again "
+                                    f"by '{other.abbreviation}'")
     return problems
 
 
