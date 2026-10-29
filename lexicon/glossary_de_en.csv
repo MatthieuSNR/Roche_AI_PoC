@@ -28,3 +28,4 @@ Vormaterial,input material,production,Material supplied upstream to produce the 
 Freigabe,release,quality,"Release of a part or an order, or an approval",low,no,proposed,"Ambiguous between release and approval, depends on the context",,
 Fixierung,firming,planning,Fixing the date or quantity of a planned order,low,no,proposed,Meaning to be confirmed,,
 Bedarf,demand,demand,Requirement or demand,low,no,proposed,"DeepL renders it as requirement; both are acceptable, not worth forcing",,
+Orderbuch,source list,sap_term,"SAP source list (German: Orderbuch), meaning confirmed in the abbreviation review of 28.10 (SL)",high,force,proposed,DeepL renders it as order book,,
